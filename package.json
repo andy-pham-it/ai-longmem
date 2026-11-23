@@ -1,0 +1,19 @@
+{
+  "name": "longmem",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Experiential memory store for working with Andy: lessons, mistakes, misunderstandings.",
+  "scripts": {
+    "longmem": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "install:plugin": "bash scripts/install-plugin.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  }
+}
