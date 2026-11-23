@@ -182,9 +182,59 @@ exception when others then
   insert into _longmem_verify values (14, 'duplicate write is refused in the same transaction', 'FAIL: ' || sqlerrm);
 end $do$;
 
+-- v1: search_vector populated on insert.
+do $do$
+declare v_vec tsvector;
+begin
+  insert into public.memories (scope, kind, title, trigger, body)
+    values ('global', 'lesson', 'verify fts insert title', 'verify fts insert trigger', 'verify fts insert body')
+    returning search_vector into v_vec;
+  insert into _longmem_verify values (15, 'search_vector is populated on insert',
+    case when v_vec is not null and v_vec <> ''::tsvector then 'ok' else 'FAIL: empty search_vector' end);
+exception when others then
+  insert into _longmem_verify values (15, 'search_vector is populated on insert', 'FAIL: ' || sqlerrm);
+end $do$;
+
+-- v1: search_vector updates when title changes.
+do $do$
+declare v_before tsvector; v_after tsvector;
+begin
+  insert into public.memories (scope, kind, title, trigger, body)
+    values ('global', 'lesson', 'verify fts before title', 'verify fts trigger', 'verify fts body')
+    returning search_vector into v_before;
+  update public.memories set title = 'verify fts after title' where title = 'verify fts before title'
+    returning search_vector into v_after;
+  insert into _longmem_verify values (16, 'search_vector updates when title changes',
+    case when v_after is not null and v_after <> v_before then 'ok' else 'FAIL: search_vector did not change' end);
+exception when others then
+  insert into _longmem_verify values (16, 'search_vector updates when title changes', 'FAIL: ' || sqlerrm);
+end $do$;
+
+-- v1: GIN index on search_vector exists.
+do $do$
+begin
+  insert into _longmem_verify values (17, 'gin index on search_vector exists',
+    case when exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'memories_search_vector_idx')
+         then 'ok' else 'FAIL: index missing' end);
+end $do$;
+
+-- v1: an FTS-only match ranks above a pure trigram match.
+do $do$
+declare v_top text;
+begin
+  insert into public.memories (scope, kind, title, trigger, body)
+    values ('global', 'lesson', 'verify fts ipv6 host', 'database host unreachable', 'network path broken');
+  select title into v_top from public.longmem_search('ipv6 database host', null, 1, null, null, 'recall');
+  insert into _longmem_verify values (18, 'fts match ranks above trigram-only match',
+    case when v_top = 'verify fts ipv6 host' then 'ok' else 'FAIL: top was ' || coalesce(v_top, '<null>') end);
+exception when others then
+  insert into _longmem_verify values (18, 'fts match ranks above trigram-only match', 'FAIL: ' || sqlerrm);
+end $do$;
+
 -- Clean up the rows this script created.
 delete from public.memories where title in (
   'verify seed title', 'verify renamed title', 'verify lineage v1', 'verify lineage v2',
-  'verify sensitive title', 'verify atomic title', 'verify platitude title');
+  'verify sensitive title', 'verify atomic title', 'verify platitude title',
+  'verify fts insert title', 'verify fts before title', 'verify fts after title', 'verify fts ipv6 host');
 
 select n, assertion, result from _longmem_verify order by n, assertion;

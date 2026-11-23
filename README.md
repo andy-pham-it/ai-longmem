@@ -118,7 +118,14 @@ Raise it with `--bytes` (clamped 1024–32768) or by pinning what must never
 fall out. If entries stop fitting at all, that is the signal to supersede —
 consolidate two lessons into one — not to raise the cap again.
 
-## Backup
+## Recall (v1: hybrid)
+
+`longmem recall` and `longmem lessons` rank entries with Postgres full-text search
+(`tsvector`/`tsquery`, config `simple`, unaccented) combined with trigram similarity,
+plus `reinforced_count` and `pinned` boosts. Nothing leaves Supabase: no model, no key,
+no quota, no 429. FTS is word-based, so paraphrase and cross-language matching still
+have limits; the upgrade trigger to real embeddings is ≥200 entries and ≥3 measured
+recall misses in a month (tracked via `recall_count` / `last_recalled_at`).
 
 ```bash
 supabase db dump -f longmem-$(date +%F).sql
