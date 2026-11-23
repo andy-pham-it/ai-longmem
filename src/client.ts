@@ -1,6 +1,6 @@
 import type { Config } from "./config.ts";
 
-export const DEFAULT_TIMEOUT_MS = 1500;
+export const DEFAULT_TIMEOUT_MS = 10_000;
 
 export type RequestInit = {
   method?: "GET" | "POST";

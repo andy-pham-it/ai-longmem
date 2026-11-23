@@ -132,7 +132,59 @@ exception when others then
     'FAIL: ' || sqlerrm);
 end $do$;
 
+-- 12. A sensitive entry never reaches the injected index. The index is the one
+-- external call v0 makes (it leaves for a model provider every turn), so the
+-- flag has to hold here or it holds nowhere.
+do $do$
+declare visible integer;
+begin
+  insert into public.memories (scope, kind, title, trigger, body, sensitive)
+  values ('global', 'fact', 'verify sensitive title', 'verify sensitive trigger', 'verify sensitive body', true);
+  select count(*) into visible from public.longmem_index_rows(null) where title = 'verify sensitive title';
+  insert into _longmem_verify values (12, 'sensitive entry is absent from the index',
+    case when visible = 0 then 'ok' else 'FAIL: sensitive entry is in the index' end);
+exception when others then
+  insert into _longmem_verify values (12, 'sensitive entry is absent from the index', 'FAIL: ' || sqlerrm);
+end $do$;
+
+-- 13. The platitude rule cannot be bypassed by writing the table directly
+-- (Supabase Studio, a psql session, or any future endpoint).
+do $do$
+begin
+  insert into public.memories (scope, kind, title, trigger, body)
+  values ('global', 'lesson', 'verify platitude title', 'be careful', 'verify platitude body');
+  insert into _longmem_verify values (13, 'a platitude trigger is rejected by the table',
+    'FAIL: the row was stored');
+exception when check_violation then
+  insert into _longmem_verify values (13, 'a platitude trigger is rejected by the table', 'ok');
+when others then
+  insert into _longmem_verify values (13, 'a platitude trigger is rejected by the table', 'FAIL: ' || sqlerrm);
+end $do$;
+
+-- 14. Dedupe and insert share one transaction: a concurrent write with the same
+-- title is refused by the database, not only by a check that ran a moment earlier.
+do $do$
+declare first_write record; second_write record;
+begin
+  select * into first_write from public.longmem_write(jsonb_build_object(
+    'scope', 'global', 'kind', 'lesson', 'title', 'verify atomic title',
+    'trigger', 'verify atomic trigger', 'body', 'verify atomic body'), false);
+  select * into second_write from public.longmem_write(jsonb_build_object(
+    'scope', 'global', 'kind', 'lesson', 'title', 'verify atomic title',
+    'trigger', 'verify atomic trigger', 'body', 'verify atomic body'), false);
+  insert into _longmem_verify values (14, 'duplicate write is refused in the same transaction',
+    case when first_write.created_id is not null
+              and second_write.created_id is null
+              and second_write.existing_id = first_write.created_id
+         then 'ok'
+         else 'FAIL: created/ existing ids did not line up' end);
+exception when others then
+  insert into _longmem_verify values (14, 'duplicate write is refused in the same transaction', 'FAIL: ' || sqlerrm);
+end $do$;
+
 -- Clean up the rows this script created.
-delete from public.memories where title in ('verify seed title', 'verify renamed title', 'verify lineage v1', 'verify lineage v2');
+delete from public.memories where title in (
+  'verify seed title', 'verify renamed title', 'verify lineage v1', 'verify lineage v2',
+  'verify sensitive title', 'verify atomic title', 'verify platitude title');
 
 select n, assertion, result from _longmem_verify order by n, assertion;

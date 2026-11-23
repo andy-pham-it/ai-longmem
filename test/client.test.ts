@@ -47,7 +47,7 @@ describe("request", () => {
     await expect(request(cfg, "/health", { timeoutMs: 10 })).rejects.toBeInstanceOf(UnreachableError);
   });
 
-  it("defaults to a 1500 ms timeout", () => {
-    expect(DEFAULT_TIMEOUT_MS).toBe(1500);
+  it("defaults to a 10 s timeout: a cold start must not report failure for a write that happened", () => {
+    expect(DEFAULT_TIMEOUT_MS).toBe(10_000);
   });
 });

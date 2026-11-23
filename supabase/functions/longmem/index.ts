@@ -230,36 +230,44 @@ async function handleWrite(req: Request): Promise<Response> {
 
   // A replacement is a deliberate act: it bypasses dedupe by design.
   if (value.replaces) {
-    const newId = await supersede(value.replaces, value);
-    return json({ action: "superseded", id: newId }, 201);
+    const created = await supersede(value.replaces, value);
+    return json({ action: "superseded", id: created.id, entry: created.entry }, 201);
   }
 
-  if (value.force !== true) {
-    const { data, error } = await db.rpc("longmem_dedupe", {
-      p_title: value.title,
-      p_scope: value.scope,
-      p_project_key: value.project_key,
-    });
-    if (error) dbFailure(error);
-    const match = (data ?? [])[0] as { id: string; title: string; similarity: number } | undefined;
-    if (match && match.similarity > 0.7) {
-      return json(
-        {
-          action: "needs_decision",
-          existing: { id: match.id, title: match.title, similarity: match.similarity },
-          options: ["reinforce", "supersede", "force"],
+  // Dedupe and insert happen in one transaction inside the database: two
+  // writers racing on the same title cannot both pass the check.
+  const { data: written, error: writeError } = await db.rpc("longmem_write", {
+    p_new: rowFrom(value),
+    p_force: value.force === true,
+  });
+  if (writeError) dbFailure(writeError);
+
+  const outcome = (written ?? [])[0] as
+    | { created_id: string | null; existing_id: string | null; existing_title: string | null; similarity: number | null }
+    | undefined;
+  if (!outcome) throw new HttpError(500, { error: "write returned no row" });
+
+  if (outcome.existing_id) {
+    return json(
+      {
+        action: "needs_decision",
+        existing: {
+          id: outcome.existing_id,
+          title: outcome.existing_title,
+          similarity: outcome.similarity,
         },
-        409,
-      );
-    }
+        options: ["reinforce", "supersede", "force"],
+      },
+      409,
+    );
   }
 
-  const { data: inserted, error: insertError } = await db
+  const { data: inserted, error: readError } = await db
     .from("memories")
-    .insert(rowFrom(value))
     .select()
+    .eq("id", outcome.created_id)
     .single();
-  if (insertError) dbFailure(insertError);
+  if (readError) dbFailure(readError);
 
   let warning: string | undefined;
   if (value.scope === "project") {
@@ -277,10 +285,16 @@ async function handleWrite(req: Request): Promise<Response> {
   return json({ action: "created", entry: inserted, ...(warning ? { warning } : {}) }, 201);
 }
 
-async function supersede(oldId: string, value: Extract<ReturnType<typeof validateEntry>, { ok: true }>["value"]) {
+async function supersede(
+  oldId: string,
+  value: Extract<ReturnType<typeof validateEntry>, { ok: true }>["value"],
+): Promise<{ id: string; entry: unknown }> {
   const { data, error } = await db.rpc("longmem_supersede", { p_old: oldId, p_new: rowFrom(value) });
   if (error) dbFailure(error);
-  return data as string;
+  const id = data as string;
+  const { data: entry, error: readError } = await db.from("memories").select().eq("id", id).single();
+  if (readError) dbFailure(readError);
+  return { id, entry };
 }
 
 async function handleSupersede(req: Request): Promise<Response> {
@@ -292,8 +306,8 @@ async function handleSupersede(req: Request): Promise<Response> {
   const result = validateEntry(entry);
   if (!result.ok) return json({ error: result.error, field: result.field }, 400);
 
-  const newId = await supersede(id, result.value);
-  return json({ action: "superseded", id: newId }, 201);
+  const created = await supersede(id, result.value);
+  return json({ action: "superseded", id: created.id, entry: created.entry }, 201);
 }
 
 async function handleReinforce(req: Request): Promise<Response> {
@@ -330,11 +344,23 @@ async function handleUpdate(req: Request): Promise<Response> {
 
   const { data: current, error: readError } = await db
     .from("memories")
-    .select("id, scope, project_key, status")
+    .select("id, scope, project_key, status, kind, title, trigger, body")
     .eq("id", id)
     .maybeSingle();
   if (readError) dbFailure(readError);
   if (!current || current.status !== "active") throw new HttpError(404, { error: "entry not found or not active" });
+
+  // An update goes through the same gate as a write: editing a trigger to
+  // "be careful" must fail here, not only in the CLI that cannot reach it.
+  const merged = validateEntry({
+    kind: current.kind,
+    scope: current.scope,
+    project_key: current.project_key,
+    title: (patch.title as string | undefined) ?? current.title,
+    trigger: (patch.trigger as string | undefined) ?? current.trigger,
+    body: (patch.body as string | undefined) ?? current.body,
+  });
+  if (!merged.ok) return json({ error: merged.error, field: merged.field }, 400);
 
   if (typeof patch.title === "string") {
     const { data: dedupe, error: dedupeError } = await db.rpc("longmem_dedupe", {

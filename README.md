@@ -93,6 +93,19 @@ a mistake that returns. In Supabase Studio, open `public.memories`:
 
 Prefer the CLI: `longmem supersede <old-id> …` does both in one transaction.
 
+## Sensitive entries
+
+`write --sensitive` marks an entry that must never reach a model prompt. The
+flag is enforced in the database, not in the client: `longmem_index_rows` and
+`related` exclude sensitive rows, so the entry is absent from the injected
+index and from `longmem lessons`. `recall` still returns it, because that is
+an explicit query you typed, and Studio still shows it.
+
+Use it for a secret that has to be remembered (a hostname, an account number,
+the shape of a private contract), not for a claim you merely dislike. If the
+entry is not safe in a prompt, it is not safe in `recall` either — that one is
+your call to make, and the flag does not make it for you.
+
 ## Budget
 
 The index is capped by **bytes**, not rows: 8 KB by default, roughly 50–70
