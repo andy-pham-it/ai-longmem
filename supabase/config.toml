@@ -1,0 +1,3 @@
+[functions.longmem]
+# Our bearer token is not a Supabase JWT, so the gateway must not validate it.
+verify_jwt = false
