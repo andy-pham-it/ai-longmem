@@ -33,8 +33,11 @@ export function parseArgs(argv: string[]): { flags: Flags; positional: string[] 
   const positional: string[] = [];
 
   const set = (name: string, value: string | true): void => {
+    if (value === true) {
+      if (flags[name] === undefined) flags[name] = true;
+      return;
+    }
     const existing = flags[name];
-    if (value === true) return; // a bare `--flag` never appends a second value
     if (existing === undefined || existing === true) {
       flags[name] = value;
       return;

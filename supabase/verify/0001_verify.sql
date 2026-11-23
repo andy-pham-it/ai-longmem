@@ -80,16 +80,17 @@ insert into _longmem_verify values (7, 'embedding column is vector(768)',
       and a.attname = 'embedding' and a.attnum > 0
   ), 'FAIL: column missing'));
 
--- 8. All six RPC functions exist.
+-- 8. All eight RPC functions exist.
 insert into _longmem_verify
-select 8, 'six RPC functions exist',
-  case when count(*) = 6 then 'ok' else 'FAIL: found ' || count(*) end
+select 8, 'eight RPC functions exist',
+  case when count(*) = 8 then 'ok' else 'FAIL: found ' || count(*) end
 from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public'
   and p.proname in (
     'longmem_index_rows', 'longmem_search', 'longmem_dedupe',
-    'longmem_cross_project_similar', 'longmem_supersede', 'longmem_counts'
+    'longmem_cross_project_similar', 'longmem_supersede', 'longmem_counts',
+    'longmem_reinforce', 'longmem_mark_recalled'
   );
 
 -- 9. RLS is on and there is no policy at all.
@@ -99,7 +100,39 @@ insert into _longmem_verify values (9, 'RLS enabled and no policies on public.me
                  where schemaname = 'public' and tablename = 'memories') = 0
        then 'ok' else 'FAIL: RLS off or a policy exists' end);
 
+-- 10. The API roles hold no privilege on the table. The project setting
+-- "Grant API access to new tables automatically" grants them at create time,
+-- so the migration's revoke has to win. RLS alone would not be enough: with
+-- a table grant, anon could read through any future policy by accident.
+insert into _longmem_verify values (10, 'anon and authenticated have no table privilege',
+  case when not has_table_privilege('anon', 'public.memories', 'select')
+            and not has_table_privilege('anon', 'public.memories', 'insert')
+            and not has_table_privilege('authenticated', 'public.memories', 'select')
+            and not has_table_privilege('authenticated', 'public.memories', 'insert')
+       then 'ok' else 'FAIL: API role still holds a privilege on memories' end);
+
+-- 11. A superseding entry exposes the entry it replaced.
+do $do$
+declare a uuid; b uuid; got uuid;
+begin
+  insert into public.memories (scope, kind, title, trigger, body)
+  values ('global', 'lesson', 'verify lineage v1', 'verify lineage trigger', 'verify lineage body v1')
+  returning id into a;
+  perform public.longmem_supersede(a, jsonb_build_object(
+    'scope', 'global', 'kind', 'lesson', 'title', 'verify lineage v2',
+    'trigger', 'verify lineage trigger', 'body', 'verify lineage body v2'));
+  select id into b from public.memories where title = 'verify lineage v2';
+  select s.replaces_id into got
+  from public.longmem_search('verify lineage v2', null, 5, null, null, 'recall') s
+  where s.id = b;
+  insert into _longmem_verify values (11, 'superseded entry exposes replaces predecessor',
+    case when got = a then 'ok' else 'FAIL: replaces_id is ' || coalesce(got::text, 'null') end);
+exception when others then
+  insert into _longmem_verify values (11, 'superseded entry exposes replaces predecessor',
+    'FAIL: ' || sqlerrm);
+end $do$;
+
 -- Clean up the rows this script created.
-delete from public.memories where title in ('verify seed title', 'verify renamed title');
+delete from public.memories where title in ('verify seed title', 'verify renamed title', 'verify lineage v1', 'verify lineage v2');
 
 select n, assertion, result from _longmem_verify order by n, assertion;
