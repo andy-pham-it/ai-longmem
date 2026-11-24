@@ -231,10 +231,28 @@ exception when others then
   insert into _longmem_verify values (18, 'fts match ranks above trigram-only match', 'FAIL: ' || sqlerrm);
 end $do$;
 
+-- 19. The list RPC includes every status when asked for 'all'.
+do $do$
+declare v_count integer;
+begin
+  insert into public.memories (scope, kind, title, trigger, body, status)
+    values ('global', 'lesson', 'verify list active', 't', 'b', 'active'),
+           ('global', 'lesson', 'verify list superseded', 't', 'b', 'superseded'),
+           ('global', 'lesson', 'verify list archived', 't', 'b', 'archived');
+  select count(*) into v_count
+  from public.longmem_list(null, null, null, null, 'all', 100)
+  where title like 'verify list %';
+  insert into _longmem_verify values (19, 'list rpc includes all statuses',
+    case when v_count = 3 then 'ok' else 'FAIL: got ' || v_count || ' of 3' end);
+exception when others then
+  insert into _longmem_verify values (19, 'list rpc includes all statuses', 'FAIL: ' || sqlerrm);
+end $do$;
+
 -- Clean up the rows this script created.
 delete from public.memories where title in (
   'verify seed title', 'verify renamed title', 'verify lineage v1', 'verify lineage v2',
   'verify sensitive title', 'verify atomic title', 'verify platitude title',
-  'verify fts insert title', 'verify fts before title', 'verify fts after title', 'verify fts ipv6 host');
+  'verify fts insert title', 'verify fts before title', 'verify fts after title', 'verify fts ipv6 host',
+  'verify list active', 'verify list superseded', 'verify list archived');
 
 select n, assertion, result from _longmem_verify order by n, assertion;
