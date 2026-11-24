@@ -22,6 +22,13 @@ export function runStoreContract(name: string, makeStore: () => Promise<MemorySt
     expect((await core.index(null)).bytes).toBeLessThanOrEqual(8192);
   });
 
+  test(`${name}: counts has http shape`, async () => {
+    const c = await (await makeStore()).counts();
+    for (const k of ["total", "active", "superseded", "archived", "global", "project", "pinned"]) {
+      expect(typeof c[k]).toBe("number");
+    }
+    expect(typeof c.by_kind).toBe("object");
+  });
   test(`${name}: accented entry is found by a tone-less query`, async () => {
     const core = createCore(await makeStore());
     await core.write({ kind: "lesson", title: "Không thể kết nối database host", trigger: "Khi database host không reachable", body: "The direct host was IPv6-only and refused connections from this machine." });

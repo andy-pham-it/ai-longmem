@@ -23,6 +23,7 @@ export type MemoryRow = {
   replaces_id?: string | null;
   replaces_title?: string | null;
   replaces_created_at?: string | null;
+  replaces?: { id: string; title: string; created_at: string } | null;
 };
 
 export type NewMemoryRow = {

@@ -170,7 +170,7 @@ export function createCore(store: MemoryStore): Core {
       const row = toRow(result.value as any);
       const created = await store.supersede(oldId, row);
       const pred = await store.predecessorOf(created.id);
-      return { ...created, replaces_id: pred?.id ?? null, replaces_title: pred?.title ?? null, replaces_created_at: pred?.created_at ?? null };
+      return { ...created, replaces_id: pred?.id ?? null, replaces_title: pred?.title ?? null, replaces_created_at: pred?.created_at ?? null, replaces: pred ? { id: pred.id, title: pred.title, created_at: pred.created_at } : null };
     },
 
     async promote(id) {

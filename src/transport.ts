@@ -108,7 +108,10 @@ async function httpCore(cfg: Extract<Config, { kind: "http" }>): Promise<Core> {
         source: input.source,
         agent_session: input.agent_session,
       });
-      return row(r.entry ?? r);
+      const entry = row(r.entry ?? r) as MemoryRow;
+      if (!entry.replaces_id) entry.replaces_id = oldId;
+      if (!entry.replaces) entry.replaces = { id: oldId, title: "", created_at: "" };
+      return entry;
     },
     async promote(id: string) {
       const r = await post<{ entry?: unknown }>("/promote", { id });

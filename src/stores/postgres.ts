@@ -47,34 +47,26 @@ async function applyMigrations(sql: ReturnType<typeof postgres>) {
   }
 }
 
-export async function createPostgresStore(databaseUrl: string): Promise<MemoryStore> {
-  const sql = postgres(databaseUrl, { ssl: databaseUrl.includes("sslmode=require") ? "require" : undefined, max: 5 });
-  await applyMigrations(sql);
-
-  const store: MemoryStore = {
+function createStore(sql: ReturnType<typeof postgres>): MemoryStore {
+  return {
     name: "postgres",
     async transaction<T>(fn: (tx: MemoryStore) => Promise<T>) {
-      return sql.begin(async (tx) => {
-        // adapt: tx is a Sql instance; wrap as MemoryStore by delegating to a temp store bound to tx? 
-        // Simpler: run fn against this store (no real nested transaction). For portability tests, acceptable.
-        return fn(store);
-      }) as Promise<T>;
+      return sql.begin(async (tx) => fn(createStore(tx as any))) as Promise<T>;
     },
-    async insert(input) {
+    async insert(input: NewMemoryRow) {
       const id = newId();
       const t = now();
       const [r] = await sql`
         insert into memories (id,scope,project_key,kind,title,trigger,body,tags,status,superseded_by,pinned,sensitive,source,agent_session,reinforced_count,last_reinforced_at,recall_count,last_recalled_at,created_at,updated_at,search_text)
         values (${id},${input.scope},${input.project_key},${input.kind},${input.title},${input.trigger},${input.body},${input.tags},${"active"},null,${input.pinned},${input.sensitive},${input.source},${input.agent_session},0,null,0,null,${t},${t},'')
         returning *`;
-      // touch trigger maintains search_text/search_vector in real DB; here ensure updated_at
       return rowFromDb(r);
     },
-    async get(id) {
+    async get(id: string) {
       const [r] = await sql`select * from memories where id = ${id}`;
       return r ? rowFromDb(r) : null;
     },
-    async list(filter) {
+    async list(filter: ListFilter) {
       const rows = await sql`
         select * from memories
         where (${filter.scope ?? null}::text is null or scope = ${filter.scope ?? null})
@@ -82,15 +74,15 @@ export async function createPostgresStore(databaseUrl: string): Promise<MemorySt
           and (${filter.kind ?? null}::text is null or kind = ${filter.kind ?? null})
           and (${filter.status ?? null}::text is null or ${filter.status ?? null} = 'all' or status = ${filter.status ?? null})
         order by pinned desc, updated_at desc
-        limit ${Math.max(1, Math.min(filter.limit ?? 100, 500))}`;
-      // tag filter in memory (array contains)
+        limit ${Math.max(1, Math.min(filter.limit ?? 500, 500))}`;
       let out = rows.map(rowFromDb);
       if (filter.tag) out = out.filter((r) => r.tags.includes(filter.tag!));
       return out;
     },
-    async update(id, patch) {
-      const cur = await store.get(id);
-      if (!cur) throw new Error("not found");
+    async update(id: string, patch: Partial<NewMemoryRow>) {
+      const [curRow] = await sql`select * from memories where id = ${id}`;
+      if (!curRow) throw new Error("not found");
+      const cur = rowFromDb(curRow);
       const next = { ...cur, ...patch };
       const t = now();
       const [r] = await sql`
@@ -98,7 +90,7 @@ export async function createPostgresStore(databaseUrl: string): Promise<MemorySt
         where id=${id} returning *`;
       return rowFromDb(r);
     },
-    async reinforce(id) {
+    async reinforce(id: string) {
       const t = now();
       const [r] = await sql`
         update memories set reinforced_count = reinforced_count + 1, last_reinforced_at = ${t}, updated_at = ${t}
@@ -106,26 +98,40 @@ export async function createPostgresStore(databaseUrl: string): Promise<MemorySt
       if (!r) throw new Error("not found");
       return rowFromDb(r);
     },
-    async supersede(oldId, input) {
-      const old = await store.get(oldId);
+    async supersede(oldId: string, input: NewMemoryRow) {
+      const old = await (async () => {
+        const [r] = await sql`select * from memories where id = ${oldId}`;
+        return r ? rowFromDb(r) : null;
+      })();
       if (!old) throw new Error("not found");
-      const created = await store.insert(input);
+      const created = await this.insert(input);
       const t = now();
       await sql`update memories set status='superseded', superseded_by=${created.id}, updated_at=${t} where id=${oldId}`;
       return created;
     },
-    async predecessorOf(id) {
+    async predecessorOf(id: string) {
       const [r] = await sql`select * from memories where superseded_by = ${id} order by created_at desc limit 1`;
       return r ? rowFromDb(r) : null;
     },
     async counts() {
+      const total = (await sql`select count(*)::int as n from memories`)[0].n;
+      const active = (await sql`select count(*)::int as n from memories where status = 'active'`)[0].n;
+      const superseded = (await sql`select count(*)::int as n from memories where status = 'superseded'`)[0].n;
+      const archived = (await sql`select count(*)::int as n from memories where status = 'archived'`)[0].n;
+      const global = (await sql`select count(*)::int as n from memories where status = 'active' and scope = 'global'`)[0].n;
+      const project = (await sql`select count(*)::int as n from memories where status = 'active' and scope = 'project'`)[0].n;
+      const pinned = (await sql`select count(*)::int as n from memories where status = 'active' and pinned = true`)[0].n;
       const rows = await sql`select kind, count(*)::int as n from memories group by kind`;
-      const total = await sql`select count(*)::int as n from memories`;
-      const out: Record<string, number> = { total: total[0].n };
-      for (const r of rows) out[r.kind] = r.n;
-      return out;
+      const by_kind: Record<string, number> = {};
+      for (const r of rows) by_kind[r.kind] = r.n;
+      return { total, active, superseded, archived, global, project, pinned, by_kind };
     },
     async close() { await sql.end(); },
   };
-  return store;
+}
+
+export async function createPostgresStore(databaseUrl: string): Promise<MemoryStore> {
+  const sql = postgres(databaseUrl, { ssl: databaseUrl.includes("sslmode=require") ? "require" : undefined, max: 5 });
+  await applyMigrations(sql);
+  return createStore(sql);
 }

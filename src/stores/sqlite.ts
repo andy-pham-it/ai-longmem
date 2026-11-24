@@ -110,10 +110,17 @@ export async function createSqliteStore(path: string): Promise<MemoryStore> {
       return r ? rowFromDb(r) : null;
     },
     async counts() {
+      const total = (db.prepare("select count(*) as n from memories").get() as any).n;
+      const active = (db.prepare("select count(*) as n from memories where status = 'active'").get() as any).n;
+      const superseded = (db.prepare("select count(*) as n from memories where status = 'superseded'").get() as any).n;
+      const archived = (db.prepare("select count(*) as n from memories where status = 'archived'").get() as any).n;
+      const global = (db.prepare("select count(*) as n from memories where status = 'active' and scope = 'global'").get() as any).n;
+      const project = (db.prepare("select count(*) as n from memories where status = 'active' and scope = 'project'").get() as any).n;
+      const pinned = (db.prepare("select count(*) as n from memories where status = 'active' and pinned = 1").get() as any).n;
       const rows = db.prepare("select kind, count(*) as n from memories group by kind").all() as any[];
-      const out: Record<string, number> = { total: (db.prepare("select count(*) as n from memories").get() as any).n };
-      for (const r of rows) out[r.kind] = r.n;
-      return out;
+      const by_kind: Record<string, number> = {};
+      for (const r of rows) by_kind[r.kind] = r.n;
+      return { total, active, superseded, archived, global, project, pinned, by_kind };
     },
     async close() { db.close(); },
   };

@@ -10,6 +10,6 @@ export interface MemoryStore {
   reinforce(id: string): Promise<MemoryRow>;
   supersede(oldId: string, input: NewMemoryRow): Promise<MemoryRow>;
   predecessorOf(id: string): Promise<MemoryRow | null>;
-  counts(): Promise<Record<string, number>>;
+  counts(): Promise<Record<string, any>>;
   close(): Promise<void>;
 }
