@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PLATITUDES, type NewEntry, validateEntry } from "../supabase/functions/_shared/validate.ts";
+import { PLATITUDES, type NewEntry, validateEntry } from "../src/core/validate.ts";
 
 function entry(over: Partial<NewEntry> = {}): NewEntry {
   return {

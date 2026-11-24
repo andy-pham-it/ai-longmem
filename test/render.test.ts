@@ -3,7 +3,7 @@ import {
   DEFAULT_INDEX_BYTES,
   type IndexRow,
   renderIndex,
-} from "../supabase/functions/_shared/render.ts";
+} from "../src/core/render.ts";
 
 function row(over: Partial<IndexRow> = {}): IndexRow {
   return {
