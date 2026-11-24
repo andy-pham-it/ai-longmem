@@ -1,4 +1,6 @@
 import { expect, test } from "vitest";
+// runner only; real suites live in sqlite.test.ts / postgres.test.ts
+test.skip("contract runner (no direct suite)", () => {});
 import { createCore } from "../../src/core/operations.ts";
 import type { MemoryStore } from "../../src/stores/memory-store.ts";
 

@@ -1,4 +1,3 @@
-import { request, RequestError } from "../client.ts";
 import { type Ctx, flagBool, flagList, flagString } from "../context.ts";
 
 async function readStdin(): Promise<string> {
@@ -19,46 +18,29 @@ export async function run(ctx: Ctx): Promise<number> {
     return 1;
   }
 
-  const payload: Record<string, unknown> = {
+  const result = await ctx.client.write({
     kind,
     title,
     trigger,
     body: body.trim(),
     tags: flagList(ctx.flags, "tag"),
-  };
-  if (flagBool(ctx.flags, "project")) {
-    payload.scope = "project";
-    payload.project_key = ctx.projectKey;
-  }
-  if (flagBool(ctx.flags, "pinned")) payload.pinned = true;
-  if (flagBool(ctx.flags, "sensitive")) payload.sensitive = true;
-  if (flagBool(ctx.flags, "force")) payload.force = true;
-  const replaces = flagString(ctx.flags, "replaces");
-  if (replaces) payload.replaces = replaces;
+    scope: flagBool(ctx.flags, "project") ? "project" : "global",
+    project_key: flagBool(ctx.flags, "project") ? ctx.projectKey : null,
+    pinned: flagBool(ctx.flags, "pinned"),
+    sensitive: flagBool(ctx.flags, "sensitive"),
+    force: flagBool(ctx.flags, "force"),
+    replaces: flagString(ctx.flags, "replaces"),
+  });
 
-  try {
-    const response = await request<{ entry: { id: string }; warning?: string }>(ctx.cfg, "/write", {
-      method: "POST",
-      body: payload,
-    });
-    ctx.out(`created ${response.entry.id}`);
-    if (response.warning) ctx.out(`warning: ${response.warning}`);
-    return 0;
-  } catch (error) {
-    if (error instanceof RequestError && error.status === 409) {
-      let decision: { existing?: { id: string; title: string; similarity: number }; options?: string[] } = {};
-      try {
-        decision = JSON.parse(error.body);
-      } catch {
-        // fall through with an empty decision
-      }
-      ctx.out("needs_decision: a similar entry already exists");
-      if (decision.existing) {
-        ctx.out(`  ${decision.existing.title} (${decision.existing.id}) similarity ${decision.existing.similarity.toFixed(2)}`);
-      }
-      ctx.out(`  options: ${(decision.options ?? ["reinforce", "supersede", "force"]).join(" | ")}`);
-      return 2;
+  if (result.action === "needs_decision") {
+    ctx.out("needs_decision: a similar entry already exists");
+    if (result.existing) {
+      ctx.out(`  ${result.existing.title} (${result.existing.id}) similarity ${(result.similarity ?? 0).toFixed(2)}`);
     }
-    throw error;
+    ctx.out("  options: reinforce | supersede | force");
+    return 2;
   }
+  ctx.out(`${result.action} ${result.id ?? result.entry?.id}`);
+  if (result.warning) ctx.out(`warning: ${result.warning}`);
+  return 0;
 }

@@ -1,5 +1,4 @@
-import { request } from "../client.ts";
-import { flagBool, flagNumber, flagString, type Ctx } from "../context.ts";
+import { type Ctx, flagBool, flagNumber, flagString } from "../context.ts";
 
 export type ListRow = {
   id: string;
@@ -17,9 +16,6 @@ export type ListRow = {
   updated_at: string;
 };
 
-type ListResponse = { entries: ListRow[]; total: number };
-
-/** One line per entry. Sensitive rows stay visible because this is an explicit audit. */
 export function formatListRow(row: ListRow): string {
   const tags = [
     `[${row.scope}]`,
@@ -40,22 +36,21 @@ export async function run(ctx: Ctx): Promise<number> {
   const tag = flagString(ctx.flags, "tag");
   const limit = flagNumber(ctx.flags, "limit") ?? 100;
 
-  const response = await request<ListResponse>(ctx.cfg, "/list", {
-    query: {
-      ...(scope !== "all" ? { scope } : {}),
-      ...(status !== "all" ? { status } : {}),
-      ...(project ? { project_key: project } : {}),
-      ...(kind ? { kind } : {}),
-      ...(tag ? { tag } : {}),
-      limit: String(limit),
-    },
+  const response = await ctx.client.list({
+    scope: scope === "all" ? undefined : (scope as "global" | "project"),
+    status: status === "all" ? "all" : (status as "active" | "superseded" | "archived"),
+    project_key: project ?? undefined,
+    kind: kind ?? undefined,
+    tag: tag ?? undefined,
+    limit,
   });
 
+  const rows = response.entries as unknown as ListRow[];
   if (flagBool(ctx.flags, "json")) {
-    ctx.out(JSON.stringify(response, null, 2));
+    ctx.out(JSON.stringify({ entries: rows, total: response.total }, null, 2));
     return 0;
   }
-  for (const row of response.entries) ctx.out(formatListRow(row));
+  for (const row of rows) ctx.out(formatListRow(row));
   ctx.out(`total ${response.total}`);
   return 0;
 }

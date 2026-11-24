@@ -39,7 +39,7 @@ export class UnreachableError extends Error {
   }
 }
 
-export async function request<T>(cfg: Config, path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(cfg: { endpoint: string; token: string }, path: string, init: RequestInit = {}): Promise<T> {
   const method = init.method ?? "GET";
   const url = new URL(`${cfg.endpoint}${path}`);
   for (const [key, value] of Object.entries(init.query ?? {})) {

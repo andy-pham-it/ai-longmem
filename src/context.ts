@@ -1,4 +1,5 @@
 import type { Config } from "./config.ts";
+import type { Core } from "./core/operations.ts";
 
 export type FlagValue = string | true | string[];
 
@@ -6,6 +7,7 @@ export type Flags = Record<string, FlagValue>;
 
 export type Ctx = {
   cfg: Config;
+  client: Core;
   flags: Flags;
   positional: string[];
   /** Project key of the directory the command ran in. */

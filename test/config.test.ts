@@ -26,6 +26,7 @@ describe("loadConfig", () => {
   it("returns endpoint and token for a valid 0600 file", () => {
     const p = writeConfig({ endpoint: "https://x", token: "a".repeat(32) }, 0o600);
     expect(loadConfig({ LONGMEM_CONFIG: p })).toEqual({
+      kind: "http",
       endpoint: "https://x",
       token: "a".repeat(32),
     });

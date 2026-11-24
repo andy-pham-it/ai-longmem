@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { pathToFileURL } from "node:url";
 import { ConfigError, type Config, loadConfig } from "./config.ts";
+import { createClient } from "./transport.ts";
 import { RequestError, UnauthorizedError, UnreachableError } from "./client.ts";
+import { CoreError } from "./core/operations.ts";
 import { type Ctx, type FlagValue, type Flags } from "./context.ts";
 import { detectProjectKey } from "./projectKey.ts";
 import * as candidatesCmd from "./commands/candidates.ts";
@@ -126,8 +128,11 @@ export async function main(argv: string[]): Promise<number> {
     throw error;
   }
 
+  const client = await createClient(cfg);
+
   const ctx: Ctx = {
     cfg,
+    client,
     flags,
     positional,
     projectKey: detectProjectKey(),
@@ -151,6 +156,10 @@ export async function main(argv: string[]): Promise<number> {
     }
     if (error instanceof ConfigError) {
       console.error(error.message);
+      return 1;
+    }
+    if (error instanceof CoreError) {
+      console.error(`${error.field}: ${error.message}`);
       return 1;
     }
     throw error;

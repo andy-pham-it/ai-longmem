@@ -1,15 +1,5 @@
-import { request } from "../client.ts";
 import { type Ctx } from "../context.ts";
-
-type Row = {
-  id: string;
-  kind: string;
-  title: string;
-  trigger: string;
-  updated_at?: string;
-};
-
-type RowsResponse = { rows: Row[]; total: number };
+import { type Entry } from "../format.ts";
 
 export async function run(ctx: Ctx): Promise<number> {
   ctx.out("Before writing, the entry must pass all five:");
@@ -21,10 +11,9 @@ export async function run(ctx: Ctx): Promise<number> {
   ctx.out("");
   ctx.out("Newest active entries (avoid duplicating these):");
 
-  const response = await request<RowsResponse>(ctx.cfg, "/index", {
-    query: { project_key: ctx.projectKey, format: "rows" },
-  });
-  const newest = [...response.rows]
+  const result = await ctx.client.list({ status: "active", limit: 500 });
+  const rows = result.entries.filter((r) => r.scope === "global" || r.project_key === ctx.projectKey);
+  const newest = [...rows]
     .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))
     .slice(0, 10);
 

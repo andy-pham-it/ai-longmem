@@ -2,7 +2,10 @@ import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export type Config = { endpoint: string; token: string };
+export type Config =
+  | { kind: "http"; endpoint: string; token: string }
+  | { kind: "postgres"; databaseUrl: string }
+  | { kind: "sqlite"; path: string; cliPath?: string };
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -44,29 +47,33 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
 
   if (typeof parsed !== "object" || parsed === null) {
-    throw new ConfigError(`${path} must contain a JSON object with "endpoint" and "token"`);
+    throw new ConfigError(`${path} must contain a JSON object`);
   }
-  const { endpoint, token } = parsed as Record<string, unknown>;
+  const obj = parsed as Record<string, unknown>;
+  const kind = typeof obj.kind === "string" ? obj.kind : (obj.endpoint && obj.token ? "http" : undefined);
 
-  if (typeof endpoint !== "string") {
-    throw new ConfigError(`${path} is missing "endpoint"`);
-  }
-  let protocol: string;
-  try {
-    protocol = new URL(endpoint).protocol;
-  } catch {
-    throw new ConfigError(`${path}: "endpoint" is not a URL: ${endpoint}`);
-  }
-  if (protocol !== "https:") {
-    throw new ConfigError(`${path}: "endpoint" must use https, got ${protocol}`);
-  }
-
-  if (typeof token !== "string") {
-    throw new ConfigError(`${path} is missing "token"`);
-  }
-  if (token.length < TOKEN_MIN_LENGTH) {
-    throw new ConfigError(`${path}: token must be at least ${TOKEN_MIN_LENGTH} characters`);
+  if (kind === "http") {
+    const { endpoint, token } = obj;
+    if (typeof endpoint !== "string") throw new ConfigError(`${path} is missing "endpoint"`);
+    let protocol: string;
+    try { protocol = new URL(endpoint).protocol; } catch { throw new ConfigError(`${path}: "endpoint" is not a URL: ${endpoint}`); }
+    if (protocol !== "https:") throw new ConfigError(`${path}: "endpoint" must use https, got ${protocol}`);
+    if (typeof token !== "string") throw new ConfigError(`${path} is missing "token"`);
+    if (token.length < TOKEN_MIN_LENGTH) throw new ConfigError(`${path}: token must be at least ${TOKEN_MIN_LENGTH} characters`);
+    return { kind: "http", endpoint: endpoint.replace(/\/+$/, ""), token };
   }
 
-  return { endpoint: endpoint.replace(/\/+$/, ""), token };
+  if (kind === "sqlite") {
+    if (typeof obj.path !== "string" || obj.path.trim() === "") throw new ConfigError(`${path} is missing "path"`);
+    const cfg: Config = { kind: "sqlite", path: obj.path };
+    if (typeof obj.cliPath === "string") cfg.cliPath = obj.cliPath;
+    return cfg;
+  }
+
+  if (kind === "postgres") {
+    if (typeof obj.databaseUrl !== "string" || obj.databaseUrl.trim() === "") throw new ConfigError(`${path} is missing "databaseUrl"`);
+    return { kind: "postgres", databaseUrl: obj.databaseUrl };
+  }
+
+  throw new ConfigError(`${path}: unknown or missing "kind" (expected http, sqlite or postgres)`);
 }

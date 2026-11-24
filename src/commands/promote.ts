@@ -1,16 +1,12 @@
-import { request } from "../client.ts";
-import { type Ctx } from "../context.ts";
+import { type Ctx, flagString } from "../context.ts";
 
 export async function run(ctx: Ctx): Promise<number> {
-  const id = ctx.positional[0];
+  const id = ctx.positional[0] ?? flagString(ctx.flags, "id");
   if (!id) {
     ctx.out("usage: longmem promote <id>");
     return 1;
   }
-  const response = await request<{ entry: { id: string; scope: string } }>(ctx.cfg, "/promote", {
-    method: "POST",
-    body: { id },
-  });
-  ctx.out(`promoted ${response.entry.id} to ${response.entry.scope}`);
+  const entry = await ctx.client.promote(id);
+  ctx.out(`promoted ${entry.id} to global`);
   return 0;
 }

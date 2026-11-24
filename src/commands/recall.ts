@@ -1,29 +1,22 @@
-import { request } from "../client.ts";
-import { type Ctx, flagBool, flagList, flagNumber } from "../context.ts";
+import { type Ctx, flagBool, flagNumber, flagString } from "../context.ts";
 import { type Entry, formatEntries } from "../format.ts";
-
-type RecallResponse = { entries: Entry[]; total: number };
 
 export async function run(ctx: Ctx): Promise<number> {
   const query = ctx.positional.join(" ").trim();
   if (query === "") {
-    ctx.out('usage: longmem recall "<words you remember>"');
+    ctx.out('usage: longmem recall "<query>"');
     return 1;
   }
-
-  const body = {
-    query,
-    project_key: ctx.projectKey,
-    k: flagNumber(ctx.flags, "k") ?? 5,
-    kinds: flagList(ctx.flags, "kind"),
-    tags: flagList(ctx.flags, "tag"),
-  };
-
-  const response = await request<RecallResponse>(ctx.cfg, "/recall", { method: "POST", body });
+  const entries = await ctx.client.recall(query, {
+    projectKey: ctx.projectKey,
+    kinds: flagString(ctx.flags, "kind") ? [flagString(ctx.flags, "kind")!] : undefined,
+    tags: flagString(ctx.flags, "tag") ? [flagString(ctx.flags, "tag")!] : undefined,
+    limit: flagNumber(ctx.flags, "k") ?? flagNumber(ctx.flags, "limit"),
+  });
   if (flagBool(ctx.flags, "json")) {
-    ctx.out(JSON.stringify(response, null, 2));
-  } else {
-    ctx.out(formatEntries(response.entries));
+    ctx.out(JSON.stringify(entries, null, 2));
+    return 0;
   }
+  ctx.out(formatEntries(entries as unknown as Entry[]));
   return 0;
 }

@@ -1,4 +1,3 @@
-import { request } from "../client.ts";
 import { type Ctx, flagBool, flagList, flagString } from "../context.ts";
 
 export async function run(ctx: Ctx): Promise<number> {
@@ -13,15 +12,17 @@ export async function run(ctx: Ctx): Promise<number> {
     return 1;
   }
 
-  const payload: Record<string, unknown> = { id, kind, title, trigger, body, tags: flagList(ctx.flags, "tag") };
-  if (flagBool(ctx.flags, "project")) {
-    payload.scope = "project";
-    payload.project_key = ctx.projectKey;
-  }
-  if (flagBool(ctx.flags, "pinned")) payload.pinned = true;
-  if (flagBool(ctx.flags, "sensitive")) payload.sensitive = true;
-
-  const response = await request<{ id: string }>(ctx.cfg, "/supersede", { method: "POST", body: payload });
-  ctx.out(`superseded ${id} with ${response.id}`);
+  const entry = await ctx.client.supersede(id, {
+    kind,
+    title,
+    trigger,
+    body,
+    tags: flagList(ctx.flags, "tag"),
+    scope: flagBool(ctx.flags, "project") ? "project" : "global",
+    project_key: flagBool(ctx.flags, "project") ? ctx.projectKey : null,
+    pinned: flagBool(ctx.flags, "pinned"),
+    sensitive: flagBool(ctx.flags, "sensitive"),
+  });
+  ctx.out(`superseded ${id} with ${entry.id}`);
   return 0;
 }
