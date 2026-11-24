@@ -292,16 +292,57 @@ It is lexical, not semantic: it will not paraphrase. Expect reliable recall up t
 500–1000 entries; past that, or after three measured recall misses in a month, revisit
 real embeddings (a future v2 that adds a provider and a key).
 
-### No sync
+### Migrating between backends
 
-Entries are not replicated between backends. Promoting an entry from a local store to a
-shared one means exporting it and writing it again. This is deliberate: sync is a
-different, much harder project and would compromise the "nothing leaves Supabase unless
-you ask" rule for every backend.
+There is no built-in migrator and no sync (see "No sync"). Moving entries from one
+store to another is a manual export/import, and it is deliberately explicit.
+
+1. Point at the **source** store and export everything, including history:
+
+   ```bash
+   LONGMEM_CONFIG=~/.config/opencode/longmem.source.json \
+     npx tsx src/cli.ts list --json --status all > entries.json
+   ```
+
+2. Point at the **target** store and re-import each entry. `--force` bypasses the
+   dedupe check, so a re-run will create duplicates — use it deliberately:
+
+   ```bash
+   LONGMEM_CONFIG=~/.config/opencode/longmem.target.json \
+     npx tsx src/cli.ts write --kind lesson \
+       --title "..." --trigger "..." --body "..." \
+       --tag a --tag b --pinned --force
+   ```
+
+   Repeat per entry, or script it: the JSON from step 1 is `{entries, total}`, so a
+   short `node`/`jq` loop over `.entries` is enough. `scope`, `project_key`,
+   `pinned` and `sensitive` must be passed explicitly because they are not inferred
+   from the body.
+
+3. Verify on the target:
+
+   ```bash
+   LONGMEM_CONFIG=~/.config/opencode/longmem.target.json npx tsx src/cli.ts status
+   LONGMEM_CONFIG=~/.config/opencode/longmem.target.json npx tsx src/cli.ts list --status all
+   ```
+
+Notes:
+- `created_at` / `updated_at` are regenerated on import; history of *when* an entry
+  was first learned is not preserved. Reinforce/supersede chains (`replaces_id`) are
+  not carried over either — supersede the wrong one again after import if needed.
+- `recall_count` and `reinforced_count` reset to 0 on import (the CLI has no flag
+  to set them); re-run `reinforce` afterwards if the old count mattered.
+- Moving from Supabase to SQLite/Postgres loses the remote `search_vector` but the
+  target builds its own on insert, so recall keeps working.
+
+### Backing up
 
 ```bash
 supabase db dump -f longmem-$(date +%F).sql
 ```
+
+For SQLite, copy the `.sqlite` file while no process is writing to it. For
+Postgres, use `pg_dump`.
 
 ## Troubleshooting
 
@@ -315,6 +356,24 @@ supabase db dump -f longmem-$(date +%F).sql
   fails silently by design, so the CLI is the only place errors show.
 - **`npm run install:plugin` does nothing** — same shim problem; run
   `bash scripts/install-plugin.sh` directly.
+- **SQLite `SQLITE_BUSY` / "database is locked"** — two processes writing the
+  same `.sqlite` file. longmem uses a single connection per process; close any
+  other `longmem` invocation, or point each deployment at its own file.
+- **SQLite file is not mode 0600** — the loader refuses world-readable configs;
+  `chmod 600` the `.json` and the `.sqlite`.
+- **Postgres "permission denied for table"** — the role in `databaseUrl` needs
+  `CREATE` on the schema for the first migration and `USAGE`/`DML` afterwards.
+  Run `scripts/migrate-postgres.ts` once as the owner, then connect as a
+  least-privilege role.
+- **Postgres connection fails with SSL** — Neon needs `?sslmode=require`; a local
+  server usually needs `?sslmode=disable`. The store only enables SSL when the URL
+  says so.
+- **`list --status all` is empty on a fresh SQLite/Postgres store** — expected:
+  nothing has been written yet. Run `status` to confirm the schema exists.
+- **Local plugin injection is missing** — `cliPath` in the config must point at
+  `src/cli.ts` of a checked-out repo, and `npx` must be on `PATH` for the user
+  OpenCode runs as. The plugin fails silently, so `longmem status` is the only
+  diagnostic.
 
 ## Project layout
 
