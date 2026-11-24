@@ -256,7 +256,48 @@ FTS is word-based, so paraphrase and cross-language matching still have limits. 
 upgrade trigger to real embeddings is ≥ 200 entries **and** ≥ 3 measured recall
 misses in a month (tracked via `recall_count` / `last_recalled_at`).
 
-## Backup
+## Backends
+
+longmem runs against four interchangeable stores. There is **no sync** between them:
+you pick one per deployment and the data stays there.
+
+| Backend | Config `kind` | When to use |
+|---|---|---|
+| Supabase (existing) | `http` | Cloud, shared across machines and agents. The deployed Edge Function is the `http` backend. |
+| Self-hosted Postgres | `postgres` | Your own server or a managed Postgres (Neon, RDS, …). Run `scripts/migrate-postgres.ts`. |
+| SQLite | `sqlite` | Local only, no server, no credentials. Good for offline work and tests. |
+| (in-memory) | `sqlite` with `path: ":memory:"` | Tests and spikes. |
+
+Config examples (always mode `0600`):
+
+```json
+// http (default, what the plugin uses today)
+{ "kind": "http", "endpoint": "https://<ref>.supabase.co/functions/v1/longmem", "token": "<64 hex>" }
+
+// sqlite
+{ "kind": "sqlite", "path": "/Users/you/.local/share/longmem/mem.sqlite", "cliPath": "/Users/you/personal/longmem/src/cli.ts" }
+
+// postgres / neon
+{ "kind": "postgres", "databaseUrl": "postgres://user:pass@host:5432/db?sslmode=require" }
+```
+
+For `sqlite`/`postgres` the plugin shells out to the repo CLI (`cliPath`), so the
+plugin stays standalone — no bundle, no daemon. If `cliPath` is missing the plugin
+fails silently and the session runs without memory.
+
+### Scoring ceiling
+
+Recall uses `0.5 * tokenOverlap + 0.3 * trigram + 0.1 * min(reinforced,5)/5 + (pinned ? 0.1 : 0)`.
+It is lexical, not semantic: it will not paraphrase. Expect reliable recall up to roughly
+500–1000 entries; past that, or after three measured recall misses in a month, revisit
+real embeddings (a future v2 that adds a provider and a key).
+
+### No sync
+
+Entries are not replicated between backends. Promoting an entry from a local store to a
+shared one means exporting it and writing it again. This is deliberate: sync is a
+different, much harder project and would compromise the "nothing leaves Supabase unless
+you ask" rule for every backend.
 
 ```bash
 supabase db dump -f longmem-$(date +%F).sql

@@ -15,7 +15,9 @@ import type { Plugin } from "@opencode-ai/plugin";
 const TIMEOUT_MS = 1500;
 const MAX_CACHED_SESSIONS = 64;
 
-type LongmemConfig = { endpoint: string; token: string };
+type LongmemConfig =
+  | { kind?: "http"; endpoint: string; token: string }
+  | { kind: "sqlite" | "postgres" | "local"; cliPath?: string };
 
 const cache = new Map<string, string>();
 const inflight = new Map<string, Promise<string>>();
@@ -30,10 +32,18 @@ function readConfig(): LongmemConfig | null {
   const path = configPath();
   try {
     statSync(path);
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<LongmemConfig>;
-    if (typeof parsed.endpoint !== "string" || typeof parsed.token !== "string") return null;
-    if (parsed.token.length < 32) return null;
-    return { endpoint: parsed.endpoint.replace(/\/+$/, ""), token: parsed.token };
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as any;
+    const kind = typeof parsed.kind === "string" ? parsed.kind : (parsed.endpoint && parsed.token ? "http" : undefined);
+    if (kind === "http" || kind === undefined) {
+      if (typeof parsed.endpoint !== "string" || typeof parsed.token !== "string") return null;
+      if (parsed.token.length < 32) return null;
+      return { kind: "http", endpoint: parsed.endpoint.replace(/\/+$/, ""), token: parsed.token };
+    }
+    if (kind === "sqlite" || kind === "postgres" || kind === "local") {
+      if (typeof parsed.cliPath !== "string" || parsed.cliPath.trim() === "") return null;
+      return { kind, cliPath: parsed.cliPath };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -67,6 +77,23 @@ function projectKeyFor(directory: string): string | null {
 }
 
 async function fetchIndex(directory: string, config: LongmemConfig): Promise<string> {
+  if (config.kind !== "http") {
+    const cliPath = (config as { cliPath?: string }).cliPath;
+    if (typeof cliPath !== "string" || cliPath.trim() === "") return "";
+    try {
+      const raw = execFileSync("npx", ["tsx", cliPath, "index", "--json"], {
+        cwd: directory,
+        encoding: "utf8",
+        timeout: TIMEOUT_MS,
+        stdio: ["ignore", "pipe", "ignore"],
+        env: { ...process.env },
+      }).trim();
+      const body = JSON.parse(raw) as { block?: unknown };
+      return typeof body.block === "string" ? body.block : "";
+    } catch {
+      return "";
+    }
+  }
   try {
     const url = new URL(`${config.endpoint}/index`);
     const key = projectKeyFor(directory);
@@ -77,7 +104,6 @@ async function fetchIndex(directory: string, config: LongmemConfig): Promise<str
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!response.ok) return "";
-
     const body = (await response.json()) as { block?: unknown };
     return typeof body.block === "string" ? body.block : "";
   } catch {
