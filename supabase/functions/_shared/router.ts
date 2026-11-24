@@ -2,6 +2,7 @@ export type RouteName =
   | "health"
   | "status"
   | "index"
+  | "list"
   | "related"
   | "recall"
   | "write"
@@ -16,6 +17,7 @@ const ROUTES: Record<RouteName, RouteMethod> = {
   health: "GET",
   status: "GET",
   index: "GET",
+  list: "GET",
   related: "GET",
   recall: "POST",
   write: "POST",

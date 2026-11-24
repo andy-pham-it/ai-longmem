@@ -144,6 +144,7 @@ and set two secrets: `LONGMEM_URL`, `LONGMEM_TOKEN`.
 |---|---|
 | `index [--bytes N] [--json]` | the injected index, as markdown or JSON |
 | `lessons "<situation>"` | entries whose trigger matches what you are about to do |
+| `list [--scope S] [--status S] [--project KEY] [--kind K] [--tag T] [--limit N] [--json]` | audit every row, including sensitive and superseded |
 | `recall "<query>" [-k N] [--kind K] [--tag T]` | full-text search over title, trigger and body |
 | `status` | health, counts by kind, index size |
 | `write --kind K --title "…" --trigger "…" --body "…"` | add an entry (`--body -` reads stdin) |
@@ -156,6 +157,14 @@ and set two secrets: `LONGMEM_URL`, `LONGMEM_TOKEN`.
 Exit code `2` from `write` means a similar entry already exists: the CLI prints the
 existing entry and the three ways forward (reinforce, supersede, or reword). A
 duplicate is a question, not an error.
+
+`list` is the audit view. Unlike `index` and `lessons`, it shows every row — sensitive,
+superseded and archived — because you cannot fix what you cannot see. By default it shows
+active entries only; pass `--status all` to see history, `--scope global` or `--project
+KEY` to narrow, and `--limit N` (1–500) to page. Each line carries the eight-character id
+needed by `reinforce`, `supersede`, `promote` and `update`. `PINNED` and `SENSITIVE` are
+printed so a mis-flagged entry is visible at a glance; `r=` and `c=` are reinforce and
+recall counts. `--json` returns `{entries, total}` for scripting.
 
 ```bash
 npm run longmem -- write --kind lesson \

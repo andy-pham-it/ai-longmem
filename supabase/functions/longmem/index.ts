@@ -149,6 +149,24 @@ async function handleIndex(url: URL): Promise<Response> {
   return json(rendered);
 }
 
+/** Audit view: every row, including sensitive and superseded, by explicit filter. */
+async function handleList(url: URL): Promise<Response> {
+  const requested = Number(url.searchParams.get("limit") ?? 100);
+  const limit = Number.isFinite(requested)
+    ? Math.min(Math.max(Math.trunc(requested), 1), 500)
+    : 100;
+  const { data, error } = await db.rpc("longmem_list", {
+    p_scope: stringOrNull(url.searchParams.get("scope")),
+    p_project_key: stringOrNull(url.searchParams.get("project_key")),
+    p_kind: stringOrNull(url.searchParams.get("kind")),
+    p_tag: stringOrNull(url.searchParams.get("tag")),
+    p_status: stringOrNull(url.searchParams.get("status")),
+    p_limit: limit,
+  });
+  if (error) dbFailure(error);
+  return json({ entries: data ?? [], total: (data ?? []).length });
+}
+
 async function handleStatus(url: URL): Promise<Response> {
   const projectKey = stringOrNull(url.searchParams.get("project_key"));
   const { data: counts, error: countsError } = await db.rpc("longmem_counts");
@@ -439,6 +457,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return await handleStatus(url);
       case "index":
         return await handleIndex(url);
+      case "list":
+        return await handleList(url);
       case "related":
         return await handleRelated(url);
       case "recall":

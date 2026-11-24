@@ -7,6 +7,7 @@ import { detectProjectKey } from "./projectKey.ts";
 import * as candidatesCmd from "./commands/candidates.ts";
 import * as indexCmd from "./commands/index.ts";
 import * as lessonsCmd from "./commands/lessons.ts";
+import * as listCmd from "./commands/list.ts";
 import * as promoteCmd from "./commands/promote.ts";
 import * as recallCmd from "./commands/recall.ts";
 import * as reinforceCmd from "./commands/reinforce.ts";
@@ -18,6 +19,7 @@ import * as writeCmd from "./commands/write.ts";
 const COMMANDS: Record<string, (ctx: Ctx) => Promise<number>> = {
   index: indexCmd.run,
   lessons: lessonsCmd.run,
+  list: listCmd.run,
   recall: recallCmd.run,
   status: statusCmd.run,
   write: writeCmd.run,
@@ -82,6 +84,8 @@ function printHelp(): void {
 
   longmem index [--bytes N] [--project] [--json]
   longmem lessons "<situation>" [--project]
+  longmem list [--scope all|global|project] [--status all|active|superseded|archived]
+              [--project KEY] [--kind KIND] [--tag TAG] [--limit N] [--json]
   longmem recall "<query>" [-k N] [--kind KIND] [--tag TAG] [--project] [--json]
   longmem status
   longmem write --kind KIND --title "..." --trigger "..." --body "..."| -
