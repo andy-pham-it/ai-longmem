@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@types/better-sqlite3": "^9.6.0",
-    "better-sqlite3": "^13.2.0"
+    "better-sqlite3": "^13.2.0",
+    "postgres": "^4.1.1"
   }
 }
