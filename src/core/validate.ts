@@ -30,8 +30,8 @@ export type NewEntry = {
   tags?: string[];
   pinned?: boolean;
   sensitive?: boolean;
-  source?: string;
-  agent_session?: string;
+  source?: string | null;
+  agent_session?: string | null;
   force?: boolean;
   replaces?: string;
 };

@@ -39,7 +39,18 @@ export type NewMemoryRow = {
   agent_session: string | null;
 };
 
-export type NewEntry = NewMemoryRow & {
+export type NewEntry = {
+  scope?: "global" | "project";
+  project_key?: string | null;
+  kind: string;
+  title: string;
+  trigger: string;
+  body: string;
+  tags?: string[];
+  pinned?: boolean;
+  sensitive?: boolean;
+  source?: string | null;
+  agent_session?: string | null;
   force?: boolean;
   replaces?: string;
 };
