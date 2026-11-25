@@ -403,3 +403,80 @@ longmem/
 ## License
 
 MIT.
+
+## MCP server (universal adapter)
+
+longmem ships a stdio MCP server that exposes every operation as a tool, so any
+MCP-capable agent (Claude Code, Codex, Cursor, Copilot, Gemini CLI, Cline, Roo
+Code, Kiro, OpenCode) can read and write longmem without shelling out.
+
+Run it directly:
+
+```bash
+npx tsx /abs/path/to/longmem/src/mcp.ts
+```
+
+Client config (same shape for Claude Code, Cursor, Copilot, Gemini CLI):
+
+```json
+{
+  "mcpServers": {
+    "longmem": {
+      "command": "npx",
+      "args": ["tsx", "/abs/path/to/longmem/src/mcp.ts"],
+      "env": { "LONGMEM_CONFIG": "/path/to/longmem.json" }
+    }
+  }
+}
+```
+
+Tools: `longmem_index`, `longmem_lessons`, `longmem_recall`, `longmem_write`,
+`longmem_reinforce`, `longmem_supersede`, `longmem_promote`, `longmem_update`,
+`longmem_list`, `longmem_candidates`, `longmem_status`. Resources:
+`longmem://index`, `longmem://status`.
+
+The server reuses `createClient`, so it works with http, sqlite, and postgres
+backends. It fails silently when unconfigured: `initialize` succeeds and tools
+return `isError: true` with a message.
+
+## Adapters for other agents
+
+Ready-to-drop instruction files live in `adapters/`. Print one with:
+
+```bash
+npx tsx src/cli.ts adapter claude-code     # or: codex, cursor, gemini, copilot, aider, generic
+npx tsx src/cli.ts adapter list
+```
+
+Each adapter contains the canonical LONGMEM rules block plus agent-specific
+wiring (where to put the file, how to inject the index). Keep the rules block
+intact when copying.
+
+| Agent | File location | Auto-inject? |
+|---|---|---|
+| Claude Code | `~/.claude/CLAUDE.md` | Yes, via hook (below) |
+| Codex | `~/.codex/AGENTS.md` or `./AGENTS.md` | Yes, via hook (below) |
+| Cursor | `.cursor/rules/longmem.mdc` | `alwaysApply: true` |
+| Gemini CLI | `~/.gemini/GEMINI.md` | No (file only) |
+| Copilot | `.github/copilot-instructions.md` | No (file only) |
+| Aider | `CONVENTIONS.md` + `.aider.conf.yml` | No (file only; pin with `read:`) |
+| Any other | agent's instructions file | No |
+
+## Auto-inject hooks (Claude Code + Codex)
+
+Deterministic index injection at session start, matching the OpenCode plugin's
+"index is injected, not fetched" guarantee:
+
+```bash
+npm run install:hooks:claude     # merges ~/.claude/settings.json
+npm run install:hooks:codex      # merges ~/.codex/hooks.json
+```
+
+Both scripts are idempotent and back up the original config on first run. The
+hook runs `scripts/hooks/inject-index.ts`, which calls `longmem index` for the
+current project and prints `{ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext } }`.
+It exits 0 on any error (fail-silent) and never blocks a session.
+
+Note: the hook uses the absolute path to a working `npx`. If your shell's
+`npx` is a broken shim (see Troubleshooting), edit the generated config to point
+at the working binary.
