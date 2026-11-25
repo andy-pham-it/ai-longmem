@@ -21,6 +21,9 @@ type LongmemConfig =
 
 const cache = new Map<string, string>();
 const inflight = new Map<string, Promise<string>>();
+// Sessions that went idle since the last transform: remind the agent to
+// consider capturing a lesson (propose only, never silent write).
+const nudgeSessions = new Set<string>();
 
 function configPath(): string {
   const fromEnv = process.env.LONGMEM_CONFIG;
@@ -115,6 +118,15 @@ export const server: Plugin = async ({ directory }) => {
   const config = readConfig();
 
   return {
+    event: async ({ event }) => {
+      try {
+        if (event?.type === "session.idle" && typeof event.properties?.sessionID === "string") {
+          nudgeSessions.add(event.properties.sessionID);
+        }
+      } catch {
+        // fail silent
+      }
+    },
     "experimental.chat.system.transform": async (input, output) => {
       if (config === null) return;
 
@@ -134,6 +146,15 @@ export const server: Plugin = async ({ directory }) => {
       }
 
       if (block !== "") output.system.push(block);
+
+      // Session-end nudge: propose a lesson, never write silently.
+      if (input.sessionID !== undefined && nudgeSessions.has(input.sessionID)) {
+        nudgeSessions.delete(input.sessionID);
+        output.system.push(
+          "## longmem — session nudge\n" +
+            "This session may have produced a lesson. Run `longmem candidates` and propose one entry if a trigger matches the work just done. Write only after Andy confirms. Never a platitude or a chat summary.",
+        );
+      }
     },
   };
 };
