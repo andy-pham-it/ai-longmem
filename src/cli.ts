@@ -84,7 +84,7 @@ export function parseArgs(argv: string[]): { flags: Flags; positional: string[] 
 }
 
 function printHelp(): void {
-  console.log(`longmem — experiential memory for working with Andy
+  console.log(`longmem — experiential memory for working with you
 
   longmem adapter <agent>   Print an agent adapter (list to see all)
   longmem index [--bytes N] [--project] [--json]

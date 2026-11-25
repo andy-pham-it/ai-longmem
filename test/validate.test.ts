@@ -25,7 +25,7 @@ describe("validateEntry", () => {
   });
 
   it("rejects a body with no correction", () => {
-    expect(validateEntry(entry({ body: "Andy was annoyed." }))).toMatchObject({ ok: false, field: "body" });
+    expect(validateEntry(entry({ body: "The user was annoyed." }))).toMatchObject({ ok: false, field: "body" });
   });
 
   it("rejects project scope without project_key and global scope with one", () => {

@@ -33,7 +33,7 @@ invariant, one way to recall.**
 - **Not a transcript.** What happened lives in the journal. `longmem` holds what
   must be remembered.
 - **Not a knowledge base.** Prose without a trigger is not an entry.
-- **One store, two scopes.** `global` for how to work with Andy; `project` for
+- **One store, two scopes.** `global` for how to work with the user; `project` for
   facts that name a repository, file or service.
 - **One invariant.** The index never exceeds 8 KB. Bytes, not rows.
 - **One way to recall.** `longmem lessons "<situation>"` returns the entries whose
@@ -73,7 +73,7 @@ such thing as an entry without a trigger.
    entry as `title — trigger`, capped at 8 KB).
 3. When the agent is about to do something non-trivial, it runs
    `longmem lessons "<situation>"` and loads the matching entries on demand.
-4. When Andy corrects the agent, it proposes one entry and writes it only on
+4. When the user corrects the agent, it proposes one entry and writes it only on
    confirmation. Auto-capture never inserts silently.
 5. A wrong entry is fixed by **superseding** it, never by deleting it — history is
    preserved and `replaces` points one hop back.
@@ -186,7 +186,7 @@ kind    lesson | mistake | misunderstanding | preference | fact
 scope   global (default) | project
 ```
 
-`scope` defaults to `global` because most experience of working with Andy is global;
+`scope` defaults to `global` because most experience of working with the user is global;
 `project` is only for entries that name a file, service or repository. A new project
 entry whose title is > 0.7 trigram-similar to one in another project triggers a
 warning.

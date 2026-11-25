@@ -152,7 +152,7 @@ export const server: Plugin = async ({ directory }) => {
         nudgeSessions.delete(input.sessionID);
         output.system.push(
           "## longmem — session nudge\n" +
-            "This session may have produced a lesson. Run `longmem candidates` and propose one entry if a trigger matches the work just done. Write only after Andy confirms. Never a platitude or a chat summary.",
+            "This session may have produced a lesson. Run `longmem candidates` and propose one entry if a trigger matches the work just done. Write only after the user confirms. Never a platitude or a chat summary.",
         );
       }
     },
