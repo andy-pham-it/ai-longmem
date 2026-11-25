@@ -6,6 +6,7 @@ import { RequestError, UnauthorizedError, UnreachableError } from "./client.ts";
 import { CoreError } from "./core/operations.ts";
 import { type Ctx, type FlagValue, type Flags } from "./context.ts";
 import { detectProjectKey } from "./projectKey.ts";
+import * as adapterCmd from "./commands/adapter.ts";
 import * as candidatesCmd from "./commands/candidates.ts";
 import * as indexCmd from "./commands/index.ts";
 import * as lessonsCmd from "./commands/lessons.ts";
@@ -19,6 +20,7 @@ import * as supersedeCmd from "./commands/supersede.ts";
 import * as writeCmd from "./commands/write.ts";
 
 const COMMANDS: Record<string, (ctx: Ctx) => Promise<number>> = {
+  adapter: adapterCmd.run,
   index: indexCmd.run,
   lessons: lessonsCmd.run,
   list: listCmd.run,
@@ -84,6 +86,7 @@ export function parseArgs(argv: string[]): { flags: Flags; positional: string[] 
 function printHelp(): void {
   console.log(`longmem — experiential memory for working with Andy
 
+  longmem adapter <agent>   Print an agent adapter (list to see all)
   longmem index [--bytes N] [--project] [--json]
   longmem lessons "<situation>" [--project]
   longmem list [--scope all|global|project] [--status all|active|superseded|archived]
