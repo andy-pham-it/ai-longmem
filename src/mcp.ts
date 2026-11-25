@@ -4,7 +4,6 @@ import { z } from "zod";
 import { ConfigError, loadConfig } from "./config.ts";
 import { createClient } from "./transport.ts";
 import type { Core } from "./core/operations.ts";
-import { LONGMEM_RULES } from "./instructions.ts";
 import { formatEntries } from "./format.ts";
 import { detectProjectKey } from "./projectKey.ts";
 import { type MemoryRow } from "./core/types.ts";
@@ -25,10 +24,6 @@ function formatRow(r: MemoryRow): string {
   const pin = r.pinned ? "  PINNED" : "";
   const sens = r.sensitive ? "  SENSITIVE" : "";
   return `${r.id.slice(0, 8)}  [${r.scope}] [${r.status}] [${r.kind}]${pin}${sens}${proj}  ${r.title}\n  r=${r.reinforced_count} c=${r.recall_count}`;
-}
-
-function asCore(client: Core | null): Core | null {
-  return client;
 }
 
 export async function callTool(

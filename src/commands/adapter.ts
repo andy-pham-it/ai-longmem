@@ -1,11 +1,12 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { type Ctx } from "../context.ts";
 
-const ADAPTERS_DIR = join(process.cwd(), "adapters");
+const ADAPTERS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "adapters");
 
 export async function run(ctx: Ctx): Promise<number> {
-  const agent = ctx.positional[1];
+  const agent = ctx.positional[0];
   if (!agent || agent === "list") {
     let files: string[] = [];
     try {

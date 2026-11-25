@@ -21,15 +21,17 @@ async function main(): Promise<void> {
   }
 
   let block = "";
-    let configured = false;
+  let configured = false;
+  let hadError = false;
   try {
-        const cfg = loadConfig();
+    const cfg = loadConfig();
     configured = true;
     const client = await createClient(cfg);
     const projectKey = detectProjectKey(cwd);
     const r = await client.index(projectKey, 8192);
     block = r.block || "";
   } catch {
+    hadError = true;
     block = "";
   }
 
@@ -43,7 +45,7 @@ async function main(): Promise<void> {
     additionalContext = (block.trim() !== "" ? block.trim() + "\n\n" : "") + LONGMEM_RULES.slice(0, maxRules);
   }
 
-  if (!configured || additionalContext.trim() === "") {
+  if (!configured || hadError || additionalContext.trim() === "") {
     process.exitCode = 0;
     return;
   }

@@ -32,15 +32,15 @@ fi
 
 "$NODE_BIN/node" - "$HOOKS_FILE" "$NPX" "$HOOK_SCRIPT" <<'NODE'
 const fs = require("node:fs");
-const hooksPath = process.argv[1];
-const npx = process.argv[2];
-const hookScript = process.argv[3];
+const hooksPath = process.argv[2];
+const npx = process.argv[3];
+const hookScript = process.argv[4];
 const data = JSON.parse(fs.readFileSync(hooksPath, "utf8"));
 data.hooks = data.hooks || {};
 data.hooks.SessionStart = data.hooks.SessionStart || [];
 data.hooks.SessionStart.push({
   matcher: "startup|resume",
-  hooks: [{ type: "command", command: `${npx} tsx ${hookScript}`, timeout: 5, additionalContextLimit: 0 }],
+  hooks: [{ type: "command", command: `"${npx}" tsx "${hookScript}"`, timeout: 5, additionalContextLimit: 0 }],
 });
 fs.writeFileSync(hooksPath, JSON.stringify(data, null, 2) + "\n");
 console.log("installed longmem hook into", hooksPath);

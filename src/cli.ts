@@ -120,6 +120,17 @@ export async function main(argv: string[]): Promise<number> {
 
   const { flags, positional } = parseArgs(rest);
 
+  // `adapter` is a static, store-free command: don't require a config.
+  if (command === "adapter") {
+    const ctx = {
+      flags,
+      positional,
+      projectKey: detectProjectKey(),
+      out: (line: string) => console.log(line),
+    } as Ctx;
+    return adapterCmd.run(ctx);
+  }
+
   let cfg: Config;
   try {
     cfg = loadConfig();

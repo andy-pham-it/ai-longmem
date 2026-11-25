@@ -36,15 +36,15 @@ fi
 # Merge using node
 "$NODE_BIN/node" - "$SETTINGS" "$NPX" "$HOOK_SCRIPT" <<'NODE'
 const fs = require("node:fs");
-const settingsPath = process.argv[1];
-const npx = process.argv[2];
-const hookScript = process.argv[3];
+const settingsPath = process.argv[2];
+const npx = process.argv[3];
+const hookScript = process.argv[4];
 const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
 settings.hooks = settings.hooks || {};
 settings.hooks.SessionStart = settings.hooks.SessionStart || [];
 settings.hooks.SessionStart.push({
   matcher: "startup|resume|clear|compact",
-  hooks: [{ type: "command", command: `${npx} tsx ${hookScript}`, timeout: 5 }],
+  hooks: [{ type: "command", command: `"${npx}" tsx "${hookScript}"`, timeout: 5 }],
 });
 fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
 console.log("installed longmem hook into", settingsPath);
