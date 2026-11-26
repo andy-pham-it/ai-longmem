@@ -177,6 +177,8 @@ export async function main(argv: string[]): Promise<number> {
       return 1;
     }
     throw error;
+  } finally {
+    try { await client.close(); } catch { /* ignore */ }
   }
 }
 

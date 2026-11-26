@@ -62,34 +62,52 @@ and the agent performs them instead of doing them.
 
 ## 3. Goals and non-goals
 
-Goals:
+Shipped state (v0 + v1 + portability + adapters + hooks + MCP). Goals:
 
 1. No practical ceiling on stored experience.
-2. A bounded, fixed-size session-start payload.
-3. Entries that fire mid-task, not just at boot.
-4. Human-editable: Andy must be able to open a table and fix a bad entry, because a wrong
-   lesson is worse than no lesson.
-5. Works for any agent that can make an HTTP call; OpenCode first.
-6. Zero local compute, free tier only.
+2. A bounded, fixed-size session-start payload (8 KB, bytes not rows).
+3. Entries that fire mid-task, not just at boot (`longmem lessons`).
+4. Human-editable: the user must be able to open a table and fix a bad entry,
+   because a wrong lesson is worse than no lesson.
+5. Works for any agent that can make an HTTP call or run a stdio process;
+   OpenCode first, then Claude Code, Codex, Cursor, Copilot, Gemini CLI, Cline,
+   Roo Code, Kiro, Aider, and any MCP-capable agent.
+6. Zero local compute for recall; free tier only; nothing leaves the chosen
+   backend.
+7. Portability across four stores (http, postgres, sqlite, in-memory) with
+   no sync between them.
+8. Deterministic injection: index is pushed at session start, not fetched on
+   demand.
 
-Non-goals:
+Non-goals (by design):
 
 - Auto-ingesting chat transcripts or session logs wholesale.
 - Being a general knowledge base for docs, PDFs, or code.
-- Replacing the journal (narrative, append-only) or the small blocks (always-true rules).
+- Replacing the journal (narrative, append-only) or the small blocks
+  (always-true rules).
 - Multi-user or sharing.
-- Vector/semantic search in v0 (see §11).
+- Vector/semantic search in v0/v1 (see §11 and the v1 design doc).
+- Sync or automatic migration between backends.
+- Memory aging, decay, or compaction.
+- Cloud/SaaS hosting of longmem itself.
 
 Anti-goals — each means the design failed even if the code runs:
 
-- **Platitude accumulation.** Entries with no trigger, no episode, no checkable behaviour.
-  They make the agent worse: it performs diligence instead of being diligent.
-- **A complaint log.** An entry that records "Andy was annoyed" without a correction is
-  noise. Every entry must change a behaviour.
+- **Platitude accumulation.** Entries with no trigger, no episode, no checkable
+  behaviour. They make the agent worse: it performs diligence instead of being
+  diligent.
+- **A complaint log.** An entry that records "the user was annoyed" without a
+  correction is noise. Every entry must change a behaviour.
 - **Payload growth with corpus size.** That is the 5,000-char ceiling again.
-- **Lessons about the person scattered per repo**, so each project relearns the same thing.
-- **Capture that depends on discipline.** If writing requires remembering to write, it
-  stops in week two.
+- **Lessons about the person scattered per repo**, so each project relearns the
+  same thing.
+- **Capture that depends on discipline.** If writing requires remembering to
+  write, it stops in week two.
+- **Silent auto-insert.** Capture is proposed and confirmed; the agent never
+  writes an entry on its own.
+- **Hard delete.** A wrong entry is superseded, never erased.
+- **External calls with sensitive data.** `sensitive = true` keeps an entry
+  out of prompts; nothing leaves the chosen backend.
 
 ## 4. Constraints
 

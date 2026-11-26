@@ -131,7 +131,7 @@ function createStore(sql: ReturnType<typeof postgres>): MemoryStore {
 }
 
 export async function createPostgresStore(databaseUrl: string): Promise<MemoryStore> {
-  const sql = postgres(databaseUrl, { ssl: databaseUrl.includes("sslmode=require") ? "require" : undefined, max: 5 });
+  const sql = postgres(databaseUrl, { ssl: databaseUrl.includes("sslmode=require") ? "require" : undefined, max: 5, onnotice: () => {} });
   await applyMigrations(sql);
   return createStore(sql);
 }

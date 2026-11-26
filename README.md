@@ -44,6 +44,71 @@ recognise while it is happening) and a **cost** you already paid once. Platitude
 ("be careful", "verify before claiming") are rejected at write time — there is no
 such thing as an entry without a trigger.
 
+## What it does
+
+- **Entry model.** `title` (≤ 120) + required `trigger` (≤ 200) + `body` (what
+  happened, what it cost, what to do instead) + `kind`
+  (`lesson | mistake | misunderstanding | preference | fact`) + `scope`
+  (`global` default | `project`).
+- **Bounded index.** An 8 KB cap (bytes, not rows) injected into every session's
+  system prompt once per session. Pinned → reinforced → kind → newest ordering;
+  `truncated`/`total` in the payload.
+- **Hybrid recall.** Postgres FTS (`tsvector`/`tsquery`, config `simple`,
+  unaccented) + trigram similarity + reinforced/pinned boosts. Nothing leaves
+  Supabase: no model, no key, no quota, no 429.
+- **Supersede, never delete.** Dedupe by title similarity > 0.7 (reinforce the
+  existing); atomic writes under `pg_advisory_xact_lock`; one-hop `replaces`
+  lineage.
+- **Sensitive flag.** `sensitive = true` keeps an entry out of the index and
+  `lessons`; `recall` and Studio still show it.
+- **Portability.** Four interchangeable stores: `http` (Supabase), `postgres`
+  (self-hosted / Neon), `sqlite` (local), in-memory. No sync between them.
+- **MCP server.** stdio, 11 tools + 2 resources, works with any MCP-capable
+  agent (Claude Code, Codex, Cursor, Copilot, Gemini CLI, Cline, Roo Code,
+  Kiro, OpenCode).
+- **Adapters.** Ready-to-drop instruction files for 7 agents
+  (`claude-code, codex, cursor, gemini, copilot, aider, generic`), printed by
+  `longmem adapter`.
+- **Auto-inject hooks.** Deterministic index injection at session start for
+  Claude Code and Codex.
+- **OpenCode plugin.** Per-session cached index, session-end nudge proposing
+  (never writing) candidate entries.
+- **CLI.** `index, lessons, recall, status, write, reinforce, supersede,
+  promote, update, list, candidates, render-block, adapter`.
+- **Propose-only capture.** Auto-capture never inserts silently; a platitude
+  (no trigger) is rejected at write time and by a DB `CHECK` constraint.
+- **Keep-alive workflow.** Daily `/health` ping so free Supabase projects do
+  not pause.
+- **Verify script.** 20 SQL assertions, every row must read `ok`.
+
+## What it does not do
+
+By design (anti-goals — shipping any of these means the design failed):
+
+- **No silent auto-insert.** Capture is proposed and confirmed; the agent never
+  writes an entry on its own.
+- **No embeddings / LLM in v0 or v1.** Recall is lexical (FTS + trigram). The
+  upgrade trigger is ≥ 200 entries **and** ≥ 3 measured recall misses in a
+  month.
+- **No multi-user or sharing.** One user, one store. Team memory is a different
+  product (see `akitaonrails/ai-memory`).
+- **No memory aging, decay or compaction.** Entries do not fade; they are
+  superseded when wrong.
+- **No sync between backends.** You pick one per deployment; moving data is a
+  manual export/import.
+- **No platitude or chat-summary entries.** "Be careful" and "here is what we
+  discussed" are rejected.
+- **No hard delete.** A wrong entry is superseded, never erased.
+- **No external calls with sensitive data.** `sensitive = true` keeps an entry
+  out of prompts and recall-by-default; nothing leaves the chosen backend.
+- **No rewrite of the live Supabase Edge Function.** It stays the `http`
+  backend; portability adds adapters, it does not replace it.
+- **No cloud/SaaS.** Self-hosted or local only.
+
+Deferred (not built yet): v2 embeddings, a handoff protocol for cross-agent
+session continuity, a git-backed markdown mirror, contradiction flagging, and
+per-tier decay.
+
 ## How it works
 
 ```

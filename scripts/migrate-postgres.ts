@@ -11,7 +11,7 @@ const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "src"
 async function main() {
   const url = process.env.DATABASE_URL ?? process.argv[2];
   if (!url) { console.error("DATABASE_URL or argv[1] required"); process.exit(1); }
-  const sql = postgres(url, { ssl: url.includes("sslmode=require") ? "require" : undefined });
+  const sql = postgres(url, { ssl: url.includes("sslmode=require") ? "require" : undefined, onnotice: () => {} });
   await sql`create table if not exists _longmem_migrations (name text primary key, applied_at timestamptz not null)`;
   const applied = new Set((await sql`select name from _longmem_migrations`).map((r: any) => r.name));
   const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();

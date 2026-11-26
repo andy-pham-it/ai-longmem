@@ -2,7 +2,7 @@
 -- Run once in the Supabase SQL editor on a fresh project.
 -- Spec: docs/superpowers/specs/2026-11-23-longmem-design.md §7
 
-set search_path = public, extensions;
+set search_path = public;
 
 create extension if not exists pg_trgm with schema public;
 create extension if not exists unaccent with schema public;
@@ -57,10 +57,19 @@ end $$;
 create trigger memories_touch_trg before insert or update on public.memories
   for each row execute function public.memories_touch();
 
--- Single-person store: the Edge Function uses the service role key and is the
--- only door. No policy for anon or authenticated, by design (spec §12).
+-- Single-person store: enable RLS. Revoke from anon/authenticated only if those
+-- roles exist (Supabase-specific); on a plain Postgres instance the owner is
+-- the only connection and RLS is enforced by the connection role.
 alter table public.memories enable row level security;
-revoke all on public.memories from anon, authenticated;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'anon') then
+    execute 'revoke all on public.memories from anon';
+  end if;
+  if exists (select 1 from pg_roles where rolname = 'authenticated') then
+    execute 'revoke all on public.memories from authenticated';
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- Read path 1: the index. Ordered so the cheapest-to-lose facts fall off the

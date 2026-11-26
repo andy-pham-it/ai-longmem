@@ -140,6 +140,9 @@ async function httpCore(cfg: Extract<Config, { kind: "http" }>): Promise<Core> {
         return false;
       }
     },
+    async close() {
+      // no-op: HTTP has no persistent connection
+    },
   };
 }
 

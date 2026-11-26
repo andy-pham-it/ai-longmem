@@ -17,6 +17,7 @@ export type Core = {
   list(filter: ListFilter): Promise<{ entries: MemoryRow[]; total: number }>;
   status(): Promise<{ counts: Record<string, number> }>;
   health(): Promise<boolean>;
+  close(): Promise<void>;
 };
 class CoreError extends Error {
   constructor(public readonly field: string, message: string) {
@@ -198,6 +199,9 @@ export function createCore(store: MemoryStore): Core {
       } catch {
         return false;
       }
+    },
+    async close() {
+      await store.close();
     },
   };
 }
