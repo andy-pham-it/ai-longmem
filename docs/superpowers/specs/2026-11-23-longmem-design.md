@@ -1,4 +1,4 @@
-# longmem — experiential memory for working with Andy
+# longmem — experiential memory for working with the user
 
 Date: 2026-11-23
 Status: design, awaiting approval

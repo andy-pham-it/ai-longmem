@@ -480,3 +480,22 @@ It exits 0 on any error (fail-silent) and never blocks a session.
 Note: the hook uses the absolute path to a working `npx`. If your shell's
 `npx` is a broken shim (see Troubleshooting), edit the generated config to point
 at the working binary.
+
+## Seed entries for new users
+
+longmem ships with an empty store. To bootstrap a new user, propose (do not
+auto-write) a small set of `preference` entries that capture how they want
+to be worked with. Example template:
+
+```bash
+npx tsx src/cli.ts write --kind preference \
+  --title "Reply in the user's preferred language" \
+  --trigger "First session in a new repo" \
+  --body "The user prefers replies in <language>. Code, identifiers, comments, file names and commit messages stay in English. Confirm the language on the first correction." \
+  --pinned
+```
+
+Other useful seeds: verification habits, budget/tier constraints, and any
+correction the user has already made in the first session. Never seed a
+platitude ("be careful", "verify before claiming") — a seed without a
+recognisable trigger is not an entry.
