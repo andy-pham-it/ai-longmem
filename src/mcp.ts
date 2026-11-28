@@ -174,6 +174,38 @@ export async function callTool(
         ];
         return textResult(lines.join("\n"));
       }
+      case "longmem_handoff": {
+        const input: any = {
+          summary: args.summary,
+          next: args.next,
+          blocked: args.blocked,
+          context: args.context,
+          task_ref: args.task_ref,
+          scope: args.scope,
+          project_key: pk,
+        };
+        const hr = await client.handoff(input);
+        return textResult(`handoff ${hr.id.slice(0, 8)} created (expires ${hr.expires_at.slice(0, 10)})\n${hr.summary}`);
+      }
+      case "longmem_resume": {
+        const hr = await client.resume(pk);
+        if (!hr) return textResult("no active handoff");
+        const lines = [
+          `## Session handoff (from ${hr.created_at.slice(0, 10)})`,
+          `Done: ${hr.summary}`,
+        ];
+        if (hr.next) lines.push(`Next: ${hr.next}`);
+        if (hr.blocked) lines.push(`Blocked: ${hr.blocked}`);
+        if (hr.task_ref?.plan_file) {
+          const t = hr.task_ref.task_number;
+          const total = hr.task_ref.total_tasks;
+          const taskStr = t && total ? `Task ${t}/${total}` : t ? `Task ${t}` : "";
+          lines.push(`Task: ${taskStr} of ${hr.task_ref.plan_file}`);
+        }
+        if (hr.context) lines.push(`Context: ${hr.context}`);
+        lines.push(`Expires: ${hr.expires_at.slice(0, 10)}`);
+        return textResult(lines.join("\n"));
+      }
       default:
         return textResult(`unknown tool: ${name}`, true);
     }
@@ -300,6 +332,29 @@ export async function buildServer(): Promise<McpServer> {
     description: "Print the capture checklist and the 10 newest active entries.",
     inputSchema: { limit: zNum },
   }, wrap("longmem_candidates"));
+
+  server.registerTool("longmem_handoff", {
+    description: "Write a session handoff (state snapshot for the next session).",
+    inputSchema: {
+      summary: z.string(),
+      next: z.string().optional(),
+      blocked: z.string().optional(),
+      context: z.string().optional(),
+      task_ref: z.object({
+        plan_file: z.string().optional(),
+        task_number: z.number().optional(),
+        total_tasks: z.number().optional(),
+        base_commit: z.string().optional(),
+      }).optional(),
+      scope: z.enum(["global", "project"]).optional(),
+      project_key: z.string().optional(),
+    },
+  }, wrap("longmem_handoff"));
+
+  server.registerTool("longmem_resume", {
+    description: "Read the latest session handoff.",
+    inputSchema: {},
+  }, wrap("longmem_resume"));
 
   server.registerTool("longmem_status", {
     description: "Health, counts, and index size.",
