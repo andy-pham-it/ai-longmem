@@ -7,7 +7,7 @@ async function readStdin(): Promise<string> {
 }
 
 export async function run(ctx: Ctx): Promise<number> {
-  const sub = ctx.positional[1];
+  const sub = ctx.positional[0];
   if (sub === "done") {
     const h = await ctx.client.resume(ctx.projectKey);
     if (!h) {
@@ -20,7 +20,7 @@ export async function run(ctx: Ctx): Promise<number> {
   }
 
   // write new handoff
-  let summary = flagString(ctx.flags, "summary") ?? ctx.positional.slice(1).join(" ").trim();
+  let summary = flagString(ctx.flags, "summary") ?? (sub === "done" ? "" : ctx.positional.join(" ").trim());
   if (flagString(ctx.flags, "body") === "-") {
     summary = (await readStdin()).trim();
   }
