@@ -3,12 +3,13 @@ import { ConfigError, loadConfig as loadConfigImpl, type Config } from "./config
 import { createCore, type Core } from "./core/operations.ts";
 import { createSqliteStore } from "./stores/sqlite.ts";
 import { createPostgresStore } from "./stores/postgres.ts";
-import type { ListFilter, MemoryRow, NewEntry } from "./core/types.ts";
+import type { HandoffInput, HandoffRow, ListFilter, MemoryRow, NewEntry } from "./core/types.ts";
 
 export type { Config };
 export { loadConfigImpl as loadConfig };
 
 function row(x: unknown): MemoryRow { return x as MemoryRow; }
+function row_handoff(x: unknown): HandoffRow { return x as HandoffRow; }
 
 async function httpCore(cfg: Extract<Config, { kind: "http" }>): Promise<Core> {
   const base = cfg.endpoint;
@@ -139,6 +140,31 @@ async function httpCore(cfg: Extract<Config, { kind: "http" }>): Promise<Core> {
       } catch {
         return false;
       }
+    },
+    async handoff(input: HandoffInput) {
+      const r = await post<{ id: string; handoff: unknown }>("/handoff", {
+        summary: input.summary,
+        next: input.next,
+        blocked: input.blocked,
+        context: input.context,
+        task_ref: input.task_ref,
+        scope: input.scope,
+        project_key: input.project_key,
+      });
+      return row_handoff(r.handoff ?? r);
+    },
+    async resume(projectKey: string | null = null) {
+      const q: Record<string, string> = {};
+      if (projectKey) q.project_key = projectKey;
+      const r = await get<{ handoff: unknown | null }>("/resume", q);
+      return r.handoff ? row_handoff(r.handoff) : null;
+    },
+    async completeHandoff(id: string) {
+      await post("/handoff/complete", { id });
+    },
+    async listHandoffs(filter) {
+      const r = await get<{ entries: unknown[]; total: number }>("/handoffs", {});
+      return (r.entries ?? []).map(row_handoff);
     },
     async close() {
       // no-op: HTTP has no persistent connection

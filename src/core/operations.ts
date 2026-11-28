@@ -1,4 +1,4 @@
-import type { ListFilter, MemoryRow, NewEntry, NewMemoryRow } from "./types.ts";
+import type { HandoffInput, HandoffRow, ListFilter, MemoryRow, NewEntry, NewHandoffRow, NewMemoryRow } from "./types.ts";
 import type { MemoryStore } from "../stores/memory-store.ts";
 import type { RenderedIndex } from "./render.ts";
 import { validateEntry } from "./validate.ts";
@@ -18,6 +18,10 @@ export type Core = {
   status(): Promise<{ counts: Record<string, number> }>;
   health(): Promise<boolean>;
   close(): Promise<void>;
+  handoff(input: HandoffInput): Promise<HandoffRow>;
+  resume(projectKey?: string | null): Promise<HandoffRow | null>;
+  completeHandoff(id: string): Promise<void>;
+  listHandoffs(filter?: { scope?: "global" | "project"; project_key?: string | null; status?: "active" | "completed" | "expired" | "all"; limit?: number }): Promise<HandoffRow[]>;
 };
 class CoreError extends Error {
   constructor(public readonly field: string, message: string) {
@@ -200,6 +204,49 @@ export function createCore(store: MemoryStore): Core {
         return false;
       }
     },
+    async handoff(input: HandoffInput) {
+      const summary = (input.summary ?? "").trim();
+      if (summary.length === 0 || summary.length > 500) throw new CoreError("summary", "summary must be 1-500 chars");
+      const next = input.next?.trim() || null;
+      const blocked = input.blocked?.trim() || null;
+      const context = input.context?.trim() || null;
+      if (next && next.length > 500) throw new CoreError("next", "next must be <=500 chars");
+      if (blocked && blocked.length > 500) throw new CoreError("blocked", "blocked must be <=500 chars");
+      if (context && context.length > 500) throw new CoreError("context", "context must be <=500 chars");
+
+      const scope = (input.scope === "project" ? "project" : "global") as "global" | "project";
+      const project_key = scope === "global" ? null : (input.project_key ?? null);
+      if (scope === "project" && !project_key) throw new CoreError("project_key", "project scope requires a project_key");
+
+      const ttlDays = Number(process.env.LONGMEM_HANDOFF_TTL_DAYS ?? 7);
+      const expires_at = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+
+      const row: NewHandoffRow = {
+        summary,
+        next,
+        blocked,
+        context,
+        task_ref: input.task_ref ?? null,
+        scope,
+        project_key,
+        expires_at,
+      };
+
+      return store.insertHandoff(row);
+    },
+
+    async resume(projectKey = null) {
+      return store.getLatestHandoff(projectKey);
+    },
+
+    async completeHandoff(id: string) {
+      await store.completeHandoff(id);
+    },
+
+    async listHandoffs(filter) {
+      return store.listHandoffs(filter);
+    },
+
     async close() {
       await store.close();
     },
