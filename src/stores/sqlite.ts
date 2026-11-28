@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, chmodSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import type { ListFilter, MemoryRow, NewMemoryRow } from "../core/types.ts";
+import type { HandoffRow, ListFilter, MemoryRow, NewHandoffRow, NewMemoryRow } from "../core/types.ts";
 import type { MemoryStore } from "./memory-store.ts";
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "sqlite", "migrations");
@@ -35,6 +35,22 @@ function rowFromDb(r: any): MemoryRow {
   };
 }
 
+function handoffFromDb(r: any): HandoffRow {
+  return {
+    id: r.id,
+    created_at: r.created_at,
+    expires_at: r.expires_at,
+    summary: r.summary,
+    next: r.next ?? null,
+    blocked: r.blocked ?? null,
+    context: r.context ?? null,
+    task_ref: r.task_ref ? JSON.parse(r.task_ref) : null,
+    scope: r.scope,
+    project_key: r.project_key ?? null,
+    status: r.status,
+  };
+}
+
 function applyMigrations(db: Database.Database) {
   db.exec(`create table if not exists _longmem_migrations (name text primary key, applied_at text not null);`);
   const applied = new Set(db.prepare("select name from _longmem_migrations").all().map((r: any) => r.name));
@@ -55,6 +71,10 @@ export async function createSqliteStore(path: string): Promise<MemoryStore> {
   const insertStmt = db.prepare(`insert into memories (id,scope,project_key,kind,title,trigger,body,tags,status,superseded_by,pinned,sensitive,source,agent_session,reinforced_count,last_reinforced_at,recall_count,last_recalled_at,created_at,updated_at) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const getStmt = db.prepare("select * from memories where id = ?");
   const updateStmt = db.prepare(`update memories set scope=?,project_key=?,kind=?,title=?,trigger=?,body=?,tags=?,status=?,superseded_by=?,pinned=?,sensitive=?,source=?,agent_session=?,reinforced_count=?,last_reinforced_at=?,recall_count=?,last_recalled_at=?,updated_at=? where id=?`);
+  const insertHandoffStmt = db.prepare(`insert into handoffs (id,created_at,expires_at,summary,next,blocked,context,task_ref,scope,project_key,status) values (?,?,?,?,?,?,?,?,?,?,?)`);
+  const getLatestHandoffStmt = db.prepare(`select * from handoffs where status='active' and expires_at > ? and (scope='global' or (scope='project' and project_key = ?)) order by case when scope='project' and project_key=? then 0 else 1 end, created_at desc limit 1`);
+  const completeHandoffStmt = db.prepare(`update handoffs set status='completed' where id=?`);
+  const listHandoffsStmt = db.prepare(`select * from handoffs where (? is null or scope=?) and (? is null or project_key=?) and (? is null or ?='all' or status=?) order by created_at desc limit ?`);
 
   const store: MemoryStore = {
     name: "sqlite",
@@ -121,6 +141,32 @@ export async function createSqliteStore(path: string): Promise<MemoryStore> {
       const by_kind: Record<string, number> = {};
       for (const r of rows) by_kind[r.kind] = r.n;
       return { total, active, superseded, archived, global, project, pinned, by_kind };
+    },
+    async insertHandoff(input: NewHandoffRow) {
+      const id = newId();
+      const t = now();
+      db.prepare(`update handoffs set status='completed' where status='active' and scope=? and (project_key is ? or project_key=?)`).run(input.scope, input.project_key, input.project_key);
+      insertHandoffStmt.run(id, t, input.expires_at, input.summary, input.next, input.blocked, input.context, input.task_ref ? JSON.stringify(input.task_ref) : null, input.scope, input.project_key, "active");
+      return handoffFromDb(db.prepare("select * from handoffs where id=?").get(id));
+    },
+    async getLatestHandoff(projectKey: string | null) {
+      const t = now();
+      const r = getLatestHandoffStmt.get(t, projectKey, projectKey);
+      if (!r) return null;
+      const h = handoffFromDb(r);
+      if (new Date(h.expires_at) <= new Date()) {
+        db.prepare(`update handoffs set status='expired' where id=?`).run(h.id);
+        return null;
+      }
+      return h;
+    },
+    async completeHandoff(id: string) {
+      completeHandoffStmt.run(id);
+    },
+    async listHandoffs(filter) {
+      const f = filter ?? {};
+      const rows = listHandoffsStmt.all(f.scope ?? null, f.scope ?? null, f.project_key ?? null, f.project_key ?? null, f.status ?? null, f.status ?? null, Math.max(1, Math.min(f.limit ?? 100, 500)));
+      return rows.map(handoffFromDb);
     },
     async close() { db.close(); },
   };
