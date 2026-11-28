@@ -8,6 +8,7 @@ import { type Ctx, type FlagValue, type Flags } from "./context.ts";
 import { detectProjectKey } from "./projectKey.ts";
 import * as adapterCmd from "./commands/adapter.ts";
 import * as candidatesCmd from "./commands/candidates.ts";
+import * as handoffCmd from "./commands/handoff.ts";
 import * as indexCmd from "./commands/index.ts";
 import * as lessonsCmd from "./commands/lessons.ts";
 import * as lintCmd from "./commands/lint.ts";
@@ -16,6 +17,7 @@ import * as promoteCmd from "./commands/promote.ts";
 import * as recallCmd from "./commands/recall.ts";
 import * as reinforceCmd from "./commands/reinforce.ts";
 import * as renderBlockCmd from "./commands/render-block.ts";
+import * as resumeCmd from "./commands/resume.ts";
 import * as statusCmd from "./commands/status.ts";
 import * as supersedeCmd from "./commands/supersede.ts";
 import * as writeCmd from "./commands/write.ts";
@@ -33,7 +35,9 @@ const COMMANDS: Record<string, (ctx: Ctx) => Promise<number>> = {
   supersede: supersedeCmd.run,
   promote: promoteCmd.run,
   candidates: candidatesCmd.run,
+  handoff: handoffCmd.run,
   "render-block": renderBlockCmd.run,
+  resume: resumeCmd.run,
 };
 
 export function parseArgs(argv: string[]): { flags: Flags; positional: string[] } {
@@ -102,7 +106,11 @@ function printHelp(): void {
   longmem supersede <id> --kind KIND --title "..." --trigger "..." --body "..."
   longmem promote <id>
   longmem candidates
+  longmem handoff "summary" [--next "..."] [--blocked "..."] [--context "..."]
+                [--plan FILE] [--task N] [--total N] [--base COMMIT] [--project] [--body -]
+  longmem handoff done
   longmem render-block [--max-bytes 1500] [--pinned-only]
+  longmem resume [--json]
 
 Exit codes: 0 ok, 1 error, 2 needs a decision (similar entry exists).`);
 }
