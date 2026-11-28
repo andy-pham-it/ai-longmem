@@ -20,14 +20,14 @@ function formatHandoff(h: HandoffRow): string {
 
 export async function run(ctx: Ctx): Promise<number> {
   const h = await ctx.client.resume(ctx.projectKey);
+  if (flagBool(ctx.flags, "json")) {
+    ctx.out(JSON.stringify({ handoff: h ?? null }, null, 2));
+    return 0;
+  }
   if (!h) {
     ctx.out("no active handoff");
     return 0;
   }
-  if (flagBool(ctx.flags, "json")) {
-    ctx.out(JSON.stringify(h, null, 2));
-  } else {
-    ctx.out(formatHandoff(h));
-  }
+  ctx.out(formatHandoff(h));
   return 0;
 }

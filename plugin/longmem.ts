@@ -80,63 +80,54 @@ function projectKeyFor(directory: string): string | null {
   }
 }
 
+function taskLineOf(h: any): string {
+  if (!h?.task_ref?.plan_file) return "";
+  const t = h.task_ref.task_number;
+  const total = h.task_ref.total_tasks;
+  const taskStr = t && total ? `Task ${t}/${total}` : t ? `Task ${t}` : "";
+  return `Task: ${taskStr} of ${h.task_ref.plan_file}${h.task_ref.base_commit ? ` (base: ${h.task_ref.base_commit})` : ""}`;
+}
+
 function formatHandoffBlock(h: any): string {
   if (!h || typeof h.summary !== "string") return "";
-  const lines: string[] = [];
-  lines.push("## Session handoff");
-  lines.push(`Done: ${h.summary}`);
-  if (h.next) lines.push(`Next: ${h.next}`);
-  if (h.blocked) lines.push(`Blocked: ${h.blocked}`);
-  if (h.task_ref?.plan_file) {
-    const t = h.task_ref.task_number;
-    const total = h.task_ref.total_tasks;
-    const taskStr = t && total ? `Task ${t}/${total}` : t ? `Task ${t}` : "";
-    lines.push(`Task: ${taskStr} of ${h.task_ref.plan_file}${h.task_ref.base_commit ? ` (base: ${h.task_ref.base_commit})` : ""}`);
+  // defense in depth: never inject an expired handoff
+  if (h.expires_at) {
+    const exp = new Date(h.expires_at).getTime();
+    if (Number.isFinite(exp) && exp < Date.now()) return "";
   }
-  if (h.context) lines.push(`Context: ${h.context}`);
 
-  // check expiry
-  if (h.expires_at && new Date(h.expires_at) <= new Date()) return "";
+  const taskLine = taskLineOf(h);
+  let summary = h.summary;
 
-  let block = lines.join("\n");
-  if (block.length <= HANDOFF_MAX_BYTES) return block;
+  let includeContext = typeof h.context === "string" && h.context.length > 0;
+  let includeBlocked = typeof h.blocked === "string" && h.blocked.length > 0;
+  let includeNext = typeof h.next === "string" && h.next.length > 0;
 
-  // truncate: context -> blocked -> next
-  // rebuild with truncation
-  const parts: string[] = ["## Session handoff", `Done: ${h.summary}`];
-  let current = parts.join("\n");
-  if (h.task_ref?.plan_file) {
-    const t = h.task_ref.task_number;
-    const total = h.task_ref.total_tasks;
-    const taskStr = t && total ? `Task ${t}/${total}` : t ? `Task ${t}` : "";
-    const taskLine = `Task: ${taskStr} of ${h.task_ref.plan_file}${h.task_ref.base_commit ? ` (base: ${h.task_ref.base_commit})` : ""}`;
-    if (current.length + 1 + taskLine.length <= HANDOFF_MAX_BYTES) {
-      parts.push(taskLine);
-      current = parts.join("\n");
-    }
+  function make(): string {
+    const lines: string[] = ["## Session handoff", `Done: ${summary}`];
+    if (taskLine) lines.push(taskLine);
+    if (includeNext) lines.push(`Next: ${h.next}`);
+    if (includeBlocked) lines.push(`Blocked: ${h.blocked}`);
+    if (includeContext) lines.push(`Context: ${h.context}`);
+    return lines.join("\n");
   }
-  if (h.next) {
-    const nextLine = `Next: ${h.next}`;
-    if (current.length + 1 + nextLine.length <= HANDOFF_MAX_BYTES) {
-      parts.push(nextLine);
-      current = parts.join("\n");
+
+  // drop optional fields in priority order: context -> blocked -> next
+  while (make().length > HANDOFF_MAX_BYTES) {
+    if (includeContext) { includeContext = false; continue; }
+    if (includeBlocked) { includeBlocked = false; continue; }
+    if (includeNext) { includeNext = false; continue; }
+    // final fallback: truncate summary (never drop task_ref)
+    if (summary.length > 0) {
+      summary = summary.slice(0, -1);
+      continue;
     }
+    break;
   }
-  if (h.blocked) {
-    const blockedLine = `Blocked: ${h.blocked}`;
-    if (current.length + 1 + blockedLine.length <= HANDOFF_MAX_BYTES) {
-      parts.push(blockedLine);
-      current = parts.join("\n");
-    }
-  }
-  if (h.context) {
-    const contextLine = `Context: ${h.context}`;
-    if (current.length + 1 + contextLine.length <= HANDOFF_MAX_BYTES) {
-      parts.push(contextLine);
-      current = parts.join("\n");
-    }
-  }
-  return parts.join("\n");
+
+  let block = make();
+  if (block.length > HANDOFF_MAX_BYTES) block = block.slice(0, HANDOFF_MAX_BYTES);
+  return block;
 }
 
 async function fetchIndex(directory: string, config: LongmemConfig): Promise<string> {
