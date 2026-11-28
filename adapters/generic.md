@@ -4,6 +4,7 @@
 
 ## longmem
 The longmem index is already in your system prompt. Do not re-fetch it.
+At session start, run `npx tsx ~/personal/longmem/src/cli.ts resume` to check for unfinished work from the last session.
 Before non-trivial work run: `npx tsx ~/personal/longmem/src/cli.ts lessons "<what you are about to do>"`
 Capture a lesson when ANY of these happens:
 - The user corrects you or rejects an approach.
@@ -11,6 +12,7 @@ Capture a lesson when ANY of these happens:
 - You discover a constraint, cost, or ordering that was not documented.
 - The same mistake or confusion could recur in another session.
 Before finishing a non-trivial task, run `longmem candidates` and propose one entry if a trigger matches the work just done.
+Before ending a session with unfinished work, write a handoff: `longmem handoff "summary" --next "..." --plan FILE --task N`. Write only after the user confirms.
 Before writing an entry, run `longmem lint` on the candidate; if it flags an error, fix it first.
 Rules (non-negotiable):
 - Propose the entry; write it only after the user confirms.

@@ -218,7 +218,10 @@ and set two secrets: `LONGMEM_URL`, `LONGMEM_TOKEN`.
 | `supersede <id> --kind K --title "…" --trigger "…" --body "…"` | replace a wrong entry, keeping the history |
 | `promote <id>` | project entry → global |
 | `candidates` | the checklist and the newest titles, for deciding what to write |
+| `handoff "summary" [--next ...] [--blocked ...] [--context ...] [--plan FILE] [--task N] [--total N] [--base COMMIT] [--project] [--body -]` | write a session handoff (state snapshot for the next session) |
+| `handoff done` | mark the current handoff as completed |
 | `render-block [--max-bytes N] [--pinned-only]` | a compact block for the agent-memory offline floor |
+| `resume [--json]` | read the latest session handoff |
 
 Exit code `2` from `write` means a similar entry already exists: the CLI prints the
 existing entry and the three ways forward (reinforce, supersede, or reword). A
@@ -321,6 +324,43 @@ no model, no key, no quota, no 429.
 FTS is word-based, so paraphrase and cross-language matching still have limits. The
 upgrade trigger to real embeddings is ≥ 200 entries **and** ≥ 3 measured recall
 misses in a month (tracked via `recall_count` / `last_recalled_at`).
+
+## Session handoff (ephemeral state)
+
+Longmem stores *lessons* — reusable patterns that survive across sessions. What it does not
+store is *state* — what was done, what is next, what is blocked. A new session starts cold:
+the agent reads the 8 KB index of lessons but has no idea where the previous session left off.
+
+**Session handoff** fills that gap. A handoff is a single structured snapshot:
+
+- `summary` — what was done (1–3 sentences, concrete).
+- `next` — what the next session should do first.
+- `blocked` — what is blocking progress (optional).
+- `context` — files, branches, commits involved (optional).
+- `task_ref` — optional pointer into a plan: `{plan_file, task_number, total_tasks, base_commit}`.
+
+Handoffs are **ephemeral**: they expire after 7 days (configurable via `LONGMEM_HANDOFF_TTL_DAYS`)
+and are archived when a newer one is written. Only one handoff is active at a time per
+`(scope, project_key)`. Handoffs never enter the 8 KB index or exports.
+
+```bash
+# Write a handoff (propose first, write only after confirmation)
+npm run longmem -- handoff "Implemented Core.handoff() and store methods; 3 tests green" \
+  --next "Wire CLI and plugin injection; run full suite" \
+  --plan docs/superpowers/plans/2026-11-28-longmem-handoff.md --task 4 --total 10 \
+  --base abc1234
+
+# Read the latest handoff (injected automatically by the plugin at session start)
+npm run longmem -- resume
+npm run longmem -- resume --json
+
+# Mark the current handoff as completed
+npm run longmem -- handoff done
+```
+
+The plugin fetches `/resume` alongside `/index` at session start and injects the handoff
+as a second system-prompt block (≤500 bytes). If no active handoff exists, nothing is
+injected.
 
 ## Backends
 
