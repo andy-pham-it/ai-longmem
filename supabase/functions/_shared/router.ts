@@ -9,7 +9,11 @@ export type RouteName =
   | "reinforce"
   | "update"
   | "supersede"
-  | "promote";
+  | "promote"
+  | "handoff"
+  | "resume"
+  | "handoffs"
+  | "handoff_complete";
 
 type RouteMethod = "GET" | "POST";
 
@@ -25,6 +29,10 @@ const ROUTES: Record<RouteName, RouteMethod> = {
   update: "POST",
   supersede: "POST",
   promote: "POST",
+  handoff: "POST",
+  resume: "GET",
+  handoffs: "GET",
+  handoff_complete: "POST",
 };
 
 export function resolveRoute(

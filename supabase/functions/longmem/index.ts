@@ -436,6 +436,107 @@ async function handlePromote(req: Request): Promise<Response> {
   return json({ action: "promoted", entry: updated });
 }
 
+
+async function handleHandoff(req: Request): Promise<Response> {
+  const body = await readJson(req);
+  const summary = stringOrNull(body.summary)?.trim();
+  if (!summary || summary.length < 1 || summary.length > 500) {
+    throw new HttpError(400, { error: "summary must be 1-500 chars", field: "summary" });
+  }
+  const next = stringOrNull(body.next)?.trim() || null;
+  const blocked = stringOrNull(body.blocked)?.trim() || null;
+  const context = stringOrNull(body.context)?.trim() || null;
+  if (next && next.length > 500) throw new HttpError(400, { error: "next must be <=500 chars", field: "next" });
+  if (blocked && blocked.length > 500) throw new HttpError(400, { error: "blocked must be <=500 chars", field: "blocked" });
+  if (context && context.length > 500) throw new HttpError(400, { error: "context must be <=500 chars", field: "context" });
+
+  const scope = body.scope === "project" ? "project" : "global";
+  const projectKey = scope === "global" ? null : stringOrNull(body.project_key);
+  if (scope === "project" && !projectKey) {
+    throw new HttpError(400, { error: "project scope requires project_key", field: "project_key" });
+  }
+
+  const ttlDays = Number(Deno.env.get("LONGMEM_HANDOFF_TTL_DAYS") ?? 7);
+  const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+
+  // archive previous active
+  await db.from("handoffs").update({ status: "completed" })
+    .eq("status", "active").eq("scope", scope)
+    .eq("project_key", projectKey ?? null as any);
+
+  const { data: inserted, error: insertError } = await db
+    .from("handoffs")
+    .insert({
+      summary,
+      next,
+      blocked,
+      context,
+      task_ref: body.task_ref ?? null,
+      scope,
+      project_key: projectKey,
+      expires_at: expiresAt,
+      status: "active",
+    })
+    .select()
+    .single();
+  if (insertError) dbFailure(insertError);
+
+  return json({ id: inserted.id, handoff: inserted }, 201);
+}
+
+async function handleResume(url: URL): Promise<Response> {
+  const projectKey = stringOrNull(url.searchParams.get("project_key"));
+  const now = new Date().toISOString();
+  const { data, error } = await db
+    .from("handoffs")
+    .select()
+    .eq("status", "active")
+    .gt("expires_at", now)
+    .or(`scope.eq.global,scope.eq.project`)
+    .order("created_at", { ascending: false })
+    .limit(10);
+  if (error) dbFailure(error);
+
+  // filter: project-scoped for this project, or global
+  const candidates = (data ?? []).filter((h: any) =>
+    h.scope === "global" || (h.scope === "project" && h.project_key === projectKey)
+  );
+  // prefer project over global
+  const projectMatch = candidates.find((h: any) => h.scope === "project" && h.project_key === projectKey);
+  const globalMatch = candidates.find((h: any) => h.scope === "global");
+  const handoff = projectMatch ?? globalMatch ?? null;
+
+  if (handoff && new Date(handoff.expires_at) <= new Date()) {
+    await db.from("handoffs").update({ status: "expired" }).eq("id", handoff.id);
+    return json({ handoff: null });
+  }
+
+  return json({ handoff });
+}
+
+async function handleHandoffs(url: URL): Promise<Response> {
+  const requested = Number(url.searchParams.get("limit") ?? 100);
+  const limit = Number.isFinite(requested) ? Math.min(Math.max(Math.trunc(requested), 1), 500) : 100;
+  const { data, error } = await db
+    .from("handoffs")
+    .select()
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) dbFailure(error);
+  return json({ entries: data ?? [], total: (data ?? []).length });
+}
+
+async function handleHandoffComplete(req: Request): Promise<Response> {
+  const body = await readJson(req);
+  const id = stringOrNull(body.id);
+  if (!id) throw new HttpError(400, { error: "id is required", field: "id" });
+
+  const { error } = await db.from("handoffs").update({ status: "completed" }).eq("id", id);
+  if (error) dbFailure(error);
+  return json({ ok: true });
+}
+
+
 // ---------------------------------------------------------------------------
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -473,6 +574,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return await handleUpdate(req);
       case "promote":
         return await handlePromote(req);
+      case "handoff":
+        return await handleHandoff(req);
+      case "resume":
+        return await handleResume(url);
+      case "handoffs":
+        return await handleHandoffs(url);
+      case "handoff_complete":
+        return await handleHandoffComplete(req);
       default:
         return json({ error: "not_found" }, 404);
     }
