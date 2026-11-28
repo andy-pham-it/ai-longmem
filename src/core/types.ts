@@ -64,3 +64,45 @@ export type ListFilter = {
   status?: "active" | "superseded" | "archived" | "all";
   limit?: number;
 };
+
+export type HandoffTaskRef = {
+  plan_file?: string;
+  task_number?: number;
+  total_tasks?: number;
+  base_commit?: string;
+};
+
+export type HandoffRow = {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  summary: string;
+  next: string | null;
+  blocked: string | null;
+  context: string | null;
+  task_ref: HandoffTaskRef | null;
+  scope: "global" | "project";
+  project_key: string | null;
+  status: "active" | "completed" | "expired";
+};
+
+export type HandoffInput = {
+  summary: string;
+  next?: string;
+  blocked?: string;
+  context?: string;
+  task_ref?: HandoffTaskRef;
+  scope?: "global" | "project";
+  project_key?: string | null;
+};
+
+export type NewHandoffRow = {
+  summary: string;
+  next: string | null;
+  blocked: string | null;
+  context: string | null;
+  task_ref: HandoffTaskRef | null;
+  scope: "global" | "project";
+  project_key: string | null;
+  expires_at: string;
+};
