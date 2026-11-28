@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PLATITUDES, type NewEntry, validateEntry } from "../src/core/validate.ts";
+import { PLATITUDES, SECRET_PATTERNS, type NewEntry, validateEntry } from "../src/core/validate.ts";
 
 function entry(over: Partial<NewEntry> = {}): NewEntry {
   return {
@@ -52,7 +52,25 @@ describe("validateEntry", () => {
     expect(validateEntry(entry({ trigger: "y".repeat(201) }))).toMatchObject({ ok: false, field: "trigger" });
   });
 
-  it("exposes the platitude patterns", () => {
-    expect(PLATITUDES.some((re) => re.test("be careful"))).toBe(true);
+  it("exposes the secret patterns", () => {
+    expect(SECRET_PATTERNS.some((re) => re.test("password is the seed default Admin@123456"))).toBe(true);
+  });
+
+  it("rejects a body containing a secret", () => {
+    expect(
+      validateEntry(
+        entry({
+          body:
+            "SIT admin account: password is the seed default Admin@123456. Do instead: store in 1Password.",
+        }),
+      ),
+    ).toMatchObject({ ok: false, field: "body" });
+    expect(
+      validateEntry(entry({ body: "phone +84987654321. Do instead: use the password manager." })),
+    ).toMatchObject({ ok: false, field: "body" });
+  });
+
+  it("accepts a body that only mentions secrets abstractly", () => {
+    expect(validateEntry(entry({ body: "The password is in 1Password. Vercel env pull may still mask secrets. Do instead: rotate." })).ok).toBe(true);
   });
 });

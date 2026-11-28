@@ -7,6 +7,7 @@ export type ListRow = {
   kind: string;
   title: string;
   trigger: string;
+  body: string;
   status: string;
   pinned: boolean;
   sensitive: boolean;

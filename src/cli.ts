@@ -10,6 +10,7 @@ import * as adapterCmd from "./commands/adapter.ts";
 import * as candidatesCmd from "./commands/candidates.ts";
 import * as indexCmd from "./commands/index.ts";
 import * as lessonsCmd from "./commands/lessons.ts";
+import * as lintCmd from "./commands/lint.ts";
 import * as listCmd from "./commands/list.ts";
 import * as promoteCmd from "./commands/promote.ts";
 import * as recallCmd from "./commands/recall.ts";
@@ -23,6 +24,7 @@ const COMMANDS: Record<string, (ctx: Ctx) => Promise<number>> = {
   adapter: adapterCmd.run,
   index: indexCmd.run,
   lessons: lessonsCmd.run,
+  lint: lintCmd.run,
   list: listCmd.run,
   recall: recallCmd.run,
   status: statusCmd.run,
@@ -89,6 +91,7 @@ function printHelp(): void {
   longmem adapter <agent>   Print an agent adapter (list to see all)
   longmem index [--bytes N] [--project] [--json]
   longmem lessons "<situation>" [--project]
+  longmem lint
   longmem list [--scope all|global|project] [--status all|active|superseded|archived]
               [--project KEY] [--kind KIND] [--tag TAG] [--limit N] [--json]
   longmem recall "<query>" [-k N] [--kind KIND] [--tag TAG] [--project] [--json]

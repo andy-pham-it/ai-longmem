@@ -17,6 +17,19 @@ export const PLATITUDES: RegExp[] = [
   /\bmind the details\b/i,
 ];
 
+/**
+ * Patterns that suggest a raw secret (password, token, API key, phone number)
+ * has been written into an entry body or trigger. Entries are returned by
+ * `recall` and may reach a model prompt, so secrets must never be stored.
+ * The check is heuristic: it flags assignments of a value to a secret-like
+ * name, and international phone numbers. It is not a substitute for review.
+ */
+export const SECRET_PATTERNS: RegExp[] = [
+  /\+\d{9,}/,                                                  // international phone number
+  /\bpassword\b[^.]*\S*[!@#$%^&*]\S*/i,                       // password ... <token with special char>
+  /\b(secret|token|api[_-]?key)\s*(is|:|=)\s*\S{8,}/i,         // secret/token/api_key: <8+ char value>
+];
+
 /** A body that only reports a mood is a complaint log entry, not a lesson. */
 const COMPLAINT_ONLY = /(was|is)\s+(annoyed|unhappy|angry|frustrated)\.?$/i;
 
@@ -69,11 +82,25 @@ export function validateEntry(entry: NewEntry): ValidatedEntry {
       `trigger is a platitude (${String(platitude)}): name the concrete situation instead`,
     );
   }
+  const secretInTrigger = SECRET_PATTERNS.find((pattern) => pattern.test(trigger));
+  if (secretInTrigger) {
+    return fail(
+      "trigger",
+      `trigger appears to contain a secret (${String(secretInTrigger)}): store the location, not the value`,
+    );
+  }
 
   const body = (entry.body ?? "").trim();
   if (body === "") return fail("body", "body is required");
   if (body.length < BODY_MIN_WITHOUT_CORRECTION && COMPLAINT_ONLY.test(body)) {
     return fail("body", "body must say what to do instead, not only what went wrong");
+  }
+  const secretInBody = SECRET_PATTERNS.find((pattern) => pattern.test(body));
+  if (secretInBody) {
+    return fail(
+      "body",
+      `body appears to contain a secret (${String(secretInBody)}): store where to find it, not the value`,
+    );
   }
 
   const scope = entry.scope ?? "global";

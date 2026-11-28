@@ -36,6 +36,12 @@ create table public.memories (
   constraint scope_project_key check (
     (scope = 'global' and project_key is null) or
     (scope = 'project' and project_key is not null)
+  ),
+  constraint body_not_secret check (
+    body !~* '\+\d{9,}' and body !~* 'password[^.]*[!@#$%^&*]'
+  ),
+  constraint trigger_not_secret check (
+    trigger !~* '\+\d{9,}' and trigger !~* 'password[^.]*[!@#$%^&*]'
   )
 );
 
@@ -56,6 +62,23 @@ end $$;
 
 create trigger memories_touch_trg before insert or update on public.memories
   for each row execute function public.memories_touch();
+
+-- Auto-unpin when an entry is no longer active.
+create or replace function public.memories_auto_unpin()
+returns trigger
+language plpgsql as $$
+begin
+  if new.status is distinct from 'active' then
+    new.pinned := false;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger memories_auto_unpin_trg
+  before update on public.memories
+  for each row
+  execute function public.memories_auto_unpin();
 
 -- Single-person store: enable RLS. Revoke from anon/authenticated only if those
 -- roles exist (Supabase-specific); on a plain Postgres instance the owner is

@@ -9,6 +9,7 @@ function row(overrides: Partial<ListRow> = {}): ListRow {
     kind: "lesson",
     title: "Verify the image",
     trigger: "After revert",
+    body: "",
     status: "active",
     pinned: false,
     sensitive: false,
