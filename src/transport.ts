@@ -160,7 +160,7 @@ async function httpCore(cfg: Extract<Config, { kind: "http" }>): Promise<Core> {
       return r.handoff ? row_handoff(r.handoff) : null;
     },
     async completeHandoff(id: string) {
-      await post("/handoff_complete", { id });
+      await post("/handoff/complete", { id });
     },
     async listHandoffs(filter) {
       const r = await get<{ entries: unknown[]; total: number }>("/handoffs", {});

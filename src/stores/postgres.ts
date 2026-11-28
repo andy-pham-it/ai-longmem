@@ -145,11 +145,15 @@ function createStore(sql: ReturnType<typeof postgres>): MemoryStore {
     async insertHandoff(input: NewHandoffRow) {
       const id = newId();
       const t = now();
-      await sql`update handoffs set status='completed' where status='active' and scope=${input.scope} and (project_key is not distinct from ${input.project_key})`;
-      const [r] = await sql`
-        insert into handoffs (id,created_at,expires_at,summary,next,blocked,context,task_ref,scope,project_key,status)
-        values (${id},${t},${input.expires_at},${input.summary},${input.next},${input.blocked},${input.context},${input.task_ref ? JSON.stringify(input.task_ref) : null},${input.scope},${input.project_key},'active')
-        returning *`;
+      let r: any;
+      await sql.begin(async (tx: any) => {
+        await tx`update handoffs set status='completed' where status='active' and scope=${input.scope} and (project_key is not distinct from ${input.project_key})`;
+        const [row] = await tx`
+          insert into handoffs (id,created_at,expires_at,summary,next,blocked,context,task_ref,scope,project_key,status)
+          values (${id},${t},${input.expires_at},${input.summary},${input.next},${input.blocked},${input.context},${input.task_ref ? JSON.stringify(input.task_ref) : null},${input.scope},${input.project_key},'active')
+          returning *`;
+        r = row;
+      });
       return handoffFromDb(r);
     },
     async getLatestHandoff(projectKey: string | null) {

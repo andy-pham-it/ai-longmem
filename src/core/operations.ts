@@ -218,7 +218,8 @@ export function createCore(store: MemoryStore): Core {
       const project_key = scope === "global" ? null : (input.project_key ?? null);
       if (scope === "project" && !project_key) throw new CoreError("project_key", "project scope requires a project_key");
 
-      const ttlDays = Number(process.env.LONGMEM_HANDOFF_TTL_DAYS ?? 7);
+      const rawTtl = Number(process.env.LONGMEM_HANDOFF_TTL_DAYS ?? 7);
+      const ttlDays = Number.isFinite(rawTtl) && rawTtl > 0 ? rawTtl : 7;
       const expires_at = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
 
       const row: NewHandoffRow = {
@@ -240,6 +241,8 @@ export function createCore(store: MemoryStore): Core {
     },
 
     async completeHandoff(id: string) {
+      const all = await store.listHandoffs({ status: "all", limit: 1000 });
+      if (!all.some((x) => x.id === id)) throw new CoreError("id", "handoff not found");
       await store.completeHandoff(id);
     },
 

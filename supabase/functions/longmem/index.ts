@@ -456,13 +456,16 @@ async function handleHandoff(req: Request): Promise<Response> {
     throw new HttpError(400, { error: "project scope requires project_key", field: "project_key" });
   }
 
-  const ttlDays = Number(Deno.env.get("LONGMEM_HANDOFF_TTL_DAYS") ?? 7);
+  const rawTtl = Number(Deno.env.get("LONGMEM_HANDOFF_TTL_DAYS") ?? 7);
+  const ttlDays = Number.isFinite(rawTtl) && rawTtl > 0 ? rawTtl : 7;
   const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
 
   // archive previous active
-  await db.from("handoffs").update({ status: "completed" })
-    .eq("status", "active").eq("scope", scope)
-    .eq("project_key", projectKey ?? null as any);
+  let archiveQ = db.from("handoffs").update({ status: "completed" })
+    .eq("status", "active").eq("scope", scope);
+  if (projectKey === null) archiveQ = archiveQ.is("project_key", null);
+  else archiveQ = archiveQ.eq("project_key", projectKey);
+  await archiveQ;
 
   const { data: inserted, error: insertError } = await db
     .from("handoffs")
@@ -530,6 +533,10 @@ async function handleHandoffComplete(req: Request): Promise<Response> {
   const body = await readJson(req);
   const id = stringOrNull(body.id);
   if (!id) throw new HttpError(400, { error: "id is required", field: "id" });
+
+  const { data: existing, error: readError } = await db.from("handoffs").select("id").eq("id", id).maybeSingle();
+  if (readError) dbFailure(readError);
+  if (!existing) throw new HttpError(404, { error: "handoff not found", field: "id" });
 
   const { error } = await db.from("handoffs").update({ status: "completed" }).eq("id", id);
   if (error) dbFailure(error);

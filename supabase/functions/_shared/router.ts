@@ -41,10 +41,14 @@ export function resolveRoute(
 ): { name: RouteName; method: RouteMethod } | null {
   const segments = pathname.split("/").filter((s) => s !== "");
   const last = segments[segments.length - 1] ?? "";
-  if (!Object.prototype.hasOwnProperty.call(ROUTES, last)) return null;
-  const name = last as RouteName;
-  if (method.toUpperCase() !== ROUTES[name]) return null;
-  return { name, method: ROUTES[name] };
+  // Support both `/handoff_complete` and `/handoff/complete` (spec/plan).
+  let name = last;
+  if (last === "complete" && segments.length >= 2 && segments[segments.length - 2] === "handoff") {
+    name = "handoff_complete";
+  }
+  if (!Object.prototype.hasOwnProperty.call(ROUTES, name)) return null;
+  if (method.toUpperCase() !== ROUTES[name as RouteName]) return null;
+  return { name: name as RouteName, method: ROUTES[name as RouteName] };
 }
 
 const encoder = new TextEncoder();
