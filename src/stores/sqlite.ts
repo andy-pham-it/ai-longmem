@@ -145,8 +145,11 @@ export async function createSqliteStore(path: string): Promise<MemoryStore> {
     async insertHandoff(input: NewHandoffRow) {
       const id = newId();
       const t = now();
-      db.prepare(`update handoffs set status='completed' where status='active' and scope=? and (project_key is ? or project_key=?)`).run(input.scope, input.project_key, input.project_key);
-      insertHandoffStmt.run(id, t, input.expires_at, input.summary, input.next, input.blocked, input.context, input.task_ref ? JSON.stringify(input.task_ref) : null, input.scope, input.project_key, "active");
+      const tx = db.transaction(() => {
+        db.prepare(`update handoffs set status='completed' where status='active' and scope=? and (project_key is ? or project_key=?)`).run(input.scope, input.project_key, input.project_key);
+        insertHandoffStmt.run(id, t, input.expires_at, input.summary, input.next, input.blocked, input.context, input.task_ref ? JSON.stringify(input.task_ref) : null, input.scope, input.project_key, "active");
+      });
+      tx();
       return handoffFromDb(db.prepare("select * from handoffs where id=?").get(id));
     },
     async getLatestHandoff(projectKey: string | null) {
@@ -165,7 +168,7 @@ export async function createSqliteStore(path: string): Promise<MemoryStore> {
     },
     async listHandoffs(filter) {
       const f = filter ?? {};
-      const rows = listHandoffsStmt.all(f.scope ?? null, f.scope ?? null, f.project_key ?? null, f.project_key ?? null, f.status ?? null, f.status ?? null, Math.max(1, Math.min(f.limit ?? 100, 500)));
+      const rows = listHandoffsStmt.all(f.scope ?? null, f.scope ?? null, f.project_key ?? null, f.project_key ?? null, f.status ?? null, f.status ?? null, f.status ?? null, Math.max(1, Math.min(f.limit ?? 100, 500)));
       return rows.map(handoffFromDb);
     },
     async close() { db.close(); },
