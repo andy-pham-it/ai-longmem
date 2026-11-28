@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
-import type { ListFilter, MemoryRow, NewMemoryRow } from "../core/types.ts";
+import type { HandoffRow, ListFilter, MemoryRow, NewHandoffRow, NewMemoryRow } from "../core/types.ts";
 import type { MemoryStore } from "./memory-store.ts";
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "postgres", "migrations");
@@ -32,6 +32,22 @@ function rowFromDb(r: any): MemoryRow {
     last_recalled_at: r.last_recalled_at ?? null,
     created_at: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
     updated_at: r.updated_at instanceof Date ? r.updated_at.toISOString() : r.updated_at,
+  };
+}
+
+function handoffFromDb(r: any): HandoffRow {
+  return {
+    id: r.id,
+    created_at: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+    expires_at: r.expires_at instanceof Date ? r.expires_at.toISOString() : r.expires_at,
+    summary: r.summary,
+    next: r.next ?? null,
+    blocked: r.blocked ?? null,
+    context: r.context ?? null,
+    task_ref: r.task_ref ?? null,
+    scope: r.scope,
+    project_key: r.project_key ?? null,
+    status: r.status,
   };
 }
 
@@ -125,6 +141,48 @@ function createStore(sql: ReturnType<typeof postgres>): MemoryStore {
       const by_kind: Record<string, number> = {};
       for (const r of rows) by_kind[r.kind] = r.n;
       return { total, active, superseded, archived, global, project, pinned, by_kind };
+    },
+    async insertHandoff(input: NewHandoffRow) {
+      const id = newId();
+      const t = now();
+      await sql`update handoffs set status='completed' where status='active' and scope=${input.scope} and (project_key is not distinct from ${input.project_key})`;
+      const [r] = await sql`
+        insert into handoffs (id,created_at,expires_at,summary,next,blocked,context,task_ref,scope,project_key,status)
+        values (${id},${t},${input.expires_at},${input.summary},${input.next},${input.blocked},${input.context},${input.task_ref ? JSON.stringify(input.task_ref) : null},${input.scope},${input.project_key},'active')
+        returning *`;
+      return handoffFromDb(r);
+    },
+    async getLatestHandoff(projectKey: string | null) {
+      const t = now();
+      const rows = await sql`
+        select * from handoffs
+        where status='active' and expires_at > ${t}
+          and (scope='global' or (scope='project' and project_key = ${projectKey}))
+        order by case when scope='project' and project_key=${projectKey} then 0 else 1 end, created_at desc
+        limit 1`;
+      if (rows.length === 0) return null;
+      const h = handoffFromDb(rows[0]);
+      if (new Date(h.expires_at) <= new Date()) {
+        await sql`update handoffs set status='expired' where id=${h.id}`;
+        return null;
+      }
+      return h;
+    },
+    async completeHandoff(id: string) {
+      await sql`update handoffs set status='completed' where id=${id}`;
+    },
+    async listHandoffs(filter) {
+      const f = filter ?? {};
+      const status = f.status ?? "all";
+      const limit = Math.max(1, Math.min(f.limit ?? 100, 500));
+      const rows = await sql`
+        select * from handoffs
+        where (${f.scope ?? null}::text is null or scope = ${f.scope ?? null})
+          and (${f.project_key ?? null}::text is null or project_key = ${f.project_key ?? null})
+          and (${status} = 'all' or status = ${status})
+        order by created_at desc
+        limit ${limit}`;
+      return rows.map(handoffFromDb);
     },
     async close() { await sql.end(); },
   };
