@@ -14,13 +14,14 @@ import type { Plugin } from "@opencode-ai/plugin";
 
 const TIMEOUT_MS = 1500;
 const MAX_CACHED_SESSIONS = 64;
+const HANDOFF_MAX_BYTES = 500;
 
 type LongmemConfig =
   | { kind?: "http"; endpoint: string; token: string }
   | { kind: "sqlite" | "postgres" | "local"; cliPath?: string };
 
-const cache = new Map<string, string>();
-const inflight = new Map<string, Promise<string>>();
+const cache = new Map<string, { index: string; handoff: string }>();
+const inflight = new Map<string, Promise<{ index: string; handoff: string }>>();
 // Sessions that went idle since the last transform: remind the agent to
 // consider capturing a lesson (propose only, never silent write).
 const nudgeSessions = new Set<string>();
@@ -79,6 +80,65 @@ function projectKeyFor(directory: string): string | null {
   }
 }
 
+function formatHandoffBlock(h: any): string {
+  if (!h || typeof h.summary !== "string") return "";
+  const lines: string[] = [];
+  lines.push("## Session handoff");
+  lines.push(`Done: ${h.summary}`);
+  if (h.next) lines.push(`Next: ${h.next}`);
+  if (h.blocked) lines.push(`Blocked: ${h.blocked}`);
+  if (h.task_ref?.plan_file) {
+    const t = h.task_ref.task_number;
+    const total = h.task_ref.total_tasks;
+    const taskStr = t && total ? `Task ${t}/${total}` : t ? `Task ${t}` : "";
+    lines.push(`Task: ${taskStr} of ${h.task_ref.plan_file}${h.task_ref.base_commit ? ` (base: ${h.task_ref.base_commit})` : ""}`);
+  }
+  if (h.context) lines.push(`Context: ${h.context}`);
+
+  // check expiry
+  if (h.expires_at && new Date(h.expires_at) <= new Date()) return "";
+
+  let block = lines.join("\n");
+  if (block.length <= HANDOFF_MAX_BYTES) return block;
+
+  // truncate: context -> blocked -> next
+  // rebuild with truncation
+  const parts: string[] = ["## Session handoff", `Done: ${h.summary}`];
+  let current = parts.join("\n");
+  if (h.task_ref?.plan_file) {
+    const t = h.task_ref.task_number;
+    const total = h.task_ref.total_tasks;
+    const taskStr = t && total ? `Task ${t}/${total}` : t ? `Task ${t}` : "";
+    const taskLine = `Task: ${taskStr} of ${h.task_ref.plan_file}${h.task_ref.base_commit ? ` (base: ${h.task_ref.base_commit})` : ""}`;
+    if (current.length + 1 + taskLine.length <= HANDOFF_MAX_BYTES) {
+      parts.push(taskLine);
+      current = parts.join("\n");
+    }
+  }
+  if (h.next) {
+    const nextLine = `Next: ${h.next}`;
+    if (current.length + 1 + nextLine.length <= HANDOFF_MAX_BYTES) {
+      parts.push(nextLine);
+      current = parts.join("\n");
+    }
+  }
+  if (h.blocked) {
+    const blockedLine = `Blocked: ${h.blocked}`;
+    if (current.length + 1 + blockedLine.length <= HANDOFF_MAX_BYTES) {
+      parts.push(blockedLine);
+      current = parts.join("\n");
+    }
+  }
+  if (h.context) {
+    const contextLine = `Context: ${h.context}`;
+    if (current.length + 1 + contextLine.length <= HANDOFF_MAX_BYTES) {
+      parts.push(contextLine);
+      current = parts.join("\n");
+    }
+  }
+  return parts.join("\n");
+}
+
 async function fetchIndex(directory: string, config: LongmemConfig): Promise<string> {
   if (config.kind !== "http") {
     const cliPath = (config as { cliPath?: string }).cliPath;
@@ -114,6 +174,49 @@ async function fetchIndex(directory: string, config: LongmemConfig): Promise<str
   }
 }
 
+async function fetchResume(directory: string, config: LongmemConfig): Promise<string> {
+  if (config.kind !== "http") {
+    const cliPath = (config as { cliPath?: string }).cliPath;
+    if (typeof cliPath !== "string" || cliPath.trim() === "") return "";
+    try {
+      const raw = execFileSync("npx", ["tsx", cliPath, "resume", "--json"], {
+        cwd: directory,
+        encoding: "utf8",
+        timeout: TIMEOUT_MS,
+        stdio: ["ignore", "pipe", "ignore"],
+        env: { ...process.env },
+      }).trim();
+      const body = JSON.parse(raw) as { handoff?: unknown };
+      return formatHandoffBlock(body.handoff);
+    } catch {
+      return "";
+    }
+  }
+  try {
+    const url = new URL(`${config.endpoint}/resume`);
+    const key = projectKeyFor(directory);
+    if (key) url.searchParams.set("project_key", key);
+
+    const response = await fetch(url.toString(), {
+      headers: { authorization: `Bearer ${config.token}` },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!response.ok) return "";
+    const body = (await response.json()) as { handoff?: unknown };
+    return formatHandoffBlock(body.handoff);
+  } catch {
+    return "";
+  }
+}
+
+async function fetchAll(directory: string, config: LongmemConfig): Promise<{ index: string; handoff: string }> {
+  const [index, handoff] = await Promise.all([
+    fetchIndex(directory, config).catch(() => ""),
+    fetchResume(directory, config).catch(() => ""),
+  ]);
+  return { index, handoff };
+}
+
 export const server: Plugin = async ({ directory }) => {
   const config = readConfig();
 
@@ -131,21 +234,22 @@ export const server: Plugin = async ({ directory }) => {
       if (config === null) return;
 
       const sessionKey = input.sessionID ?? "default";
-      let block = cache.get(sessionKey);
+      let cached = cache.get(sessionKey);
 
-      if (block === undefined) {
+      if (cached === undefined) {
         let pending = inflight.get(sessionKey);
         if (pending === undefined) {
-          pending = fetchIndex(directory, config);
+          pending = fetchAll(directory, config);
           inflight.set(sessionKey, pending);
         }
-        block = await pending.catch(() => "");
+        cached = await pending.catch(() => ({ index: "", handoff: "" }));
         inflight.delete(sessionKey);
         if (cache.size > MAX_CACHED_SESSIONS) cache.clear();
-        cache.set(sessionKey, block);
+        cache.set(sessionKey, cached);
       }
 
-      if (block !== "") output.system.push(block);
+      if (cached.index !== "") output.system.push(cached.index);
+      if (cached.handoff !== "") output.system.push(cached.handoff);
 
       // Session-end nudge: propose a lesson, never write silently.
       if (input.sessionID !== undefined && nudgeSessions.has(input.sessionID)) {
